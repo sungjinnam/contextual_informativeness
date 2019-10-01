@@ -1,0 +1,5 @@
+___*
+dataset/*
+.ipynb_checkpoints/
+model_*
+*.pyc
