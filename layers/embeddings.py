@@ -59,15 +59,19 @@ class ElmoLayer(Layer):
         #     raise NameError("Undefined direction type")
                     
         mul_mask = lambda x, m: x * tf.expand_dims(m, axis=-1)
+        ret_mask = None
         if(self.side == "LH"):
             result = mul_mask(result, tf.cast(input_mask_LH, tf.float32))
+            ret_mask = input_mask_LH
         elif(self.side == "RH"):
             result = mul_mask(result, tf.cast(input_mask_RH, tf.float32))
+            ret_mask = input_mask_RH
         elif(self.side == "tg"):
             last_idx = tf.not_equal(input_mask_LH, 1) # True:if the first value of the LH mask is not one
             last_idx = tf.reduce_sum(tf.cast(last_idx, tf.int32), axis=1) # last idx for non one vector
             last_idx = tf.stack([tf.range(tf.shape(last_idx)[0]), last_idx], axis=1) # last idx as matrix
             result = tf.gather_nd(result, last_idx)
+            ret_mask = last_idx
 
             # result = tf.gather_nd(result, tf.stack(input_idx_targ, -1))
             # result = result[:,0,:]
@@ -76,7 +80,7 @@ class ElmoLayer(Layer):
             # tg_idx = 0
             # result = result[:,input_idx_targ,:]
         else:
-            raise NameError("Undefined side type")
+            result = result
 
         return result
     
