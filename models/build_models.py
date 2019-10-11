@@ -3,7 +3,7 @@ from tensorflow.keras import layers, Model, regularizers, optimizers
 from tensorflow.keras import backend as K
 
 from layers.embeddings import ElmoLayer, BertLayer
-# from layers.attention import AttentionLayer
+from layers.attention import AttentionLayer
 import tensorflow as tf
 import numpy as np
 
@@ -33,33 +33,44 @@ def build_model_elmo(max_seq_len, attention_layer):
     
     # using sequenced ELMo embeddings as memory
     ## why ADD; not concatenate? -> fills LH 0s with RH values (and vice versa)
-    mem_cntx = layers.Add(name="cntx_to_targ")([elmo_LH_emb, elmo_RH_emb])
-
+    # mem = layers.Add(name="cntx_to_targ")([elmo_LH_emb, elmo_RH_emb])
+    
+    cntx_targ = None
     if(attention_layer):
         ## context words to the target word
+        mem = layers.Add(name="cntx_to_targ")([elmo_LH_emb, elmo_RH_emb])        
         tg_emb_repeat = layers.RepeatVector(max_seq_len, name='targ')(elmo_tg_emb)
-        # attn_layer = AttentionLayer(name='attention_layer')        
-        # att_out, attn_states = attn_layer([mem_cntx, tg_emb_repeat], verbose=False)
-        # mem_cntx = att_out
-        attn_states = layers.Attention(name='attention_layer', use_scale=True)
-        mem_cntx = layers.multiply([mem_cntx, attn_states])
+        attn_layer = AttentionLayer(name='attention_layer')        
+        att_out, attn_states = attn_layer([mem, tg_emb_repeat], verbose=False)
+        
+        att_out = layers.GlobalAveragePooling1D()(att_out)
+#         mem = layers.GlobalAveragePooling1D()(mem)      
+        cntx_targ = att_out
+#         mem = layers.Concatenate(name='concat_att_mem')([mem, att_out])
+#         attn_states = layers.Attention(name='attention_layer', use_scale=False)([mem_cntx, mem_cntx])
+#         attn_states = layers.Softmax(axis=1)(attn_states)
+#         print(attn_states)
+#         mem_cntx = layers.multiply([mem_cntx, attn_states])
         # mem_cntx = layers.Concatenate(axis=-1, name='concat_att_mem')([mem_cntx, att_out])
+    else:
+        # mem = layers.GlobalAveragePooling1D()(mem)
+        cntx_targ = elmo_tg_emb # updated target word (e.g., <UNK>) from ELMo's bidirectional process
 
     # mem = layers.Add(name='cntx_and_targ')([mem_cntx, elmo_LH_emb, elmo_tg_emb, elmo_RH_emb])
-    mem = layers.GlobalAveragePooling1D()(mem_cntx)
+    # mem = layers.GlobalAveragePooling1D()(mem_cntx)
 
     # final regression output MLP
-    output = layers.Dense(512, activation='relu')(mem)
-    # output = layers.Activation('relu')(mem)
-    output = tf.keras.layers.Dense(512, activation='linear', kernel_initializer='normal')(output)
-    output = layers.Dropout(0.2)(output)
-    output = layers.Dense(256, activation='relu')(output)
+#     output = layers.Dense(512, activation='relu')(mem)
+#     # output = layers.Activation('relu')(mem)
+#     output = tf.keras.layers.Dense(512, activation='linear', kernel_initializer='normal')(output)
+#     output = layers.Dropout(0.2)(output)
+    output = layers.Dense(256, activation='relu')(cntx_targ)
     # output = layers.Activation('relu')(output)
-    output = layers.Dense(1, activation='linear', kernel_regularizer=regularizers.l2(np.exp(1.0)))(output)
+    output = layers.Dense(1, activation='linear')(output) #, kernel_regularizer=regularizers.l2(np.exp(0.1)))(mem)
 
     # model compile
     model = Model([input_sent_len, input_sentence, input_mask_LH, input_mask_RH], output)
-    adam = optimizers.Adam(lr=0.0001)
+    # adam = optimizers.Adam(lr=0.0001)
     model.compile(loss='mean_absolute_error', optimizer='adam')
 
     return model
@@ -67,45 +78,37 @@ def build_model_elmo(max_seq_len, attention_layer):
 
 # ===== BERT model =====
 # reference: https://github.com/strongio/keras-bert/blob/master/keras-bert.ipynb
-def build_model_bert(max_seq_length, attention_layer):
-    in_id = tf.keras.layers.Input(shape=(max_seq_length), name="input_ids")
-    in_mask = tf.keras.layers.Input(shape=(max_seq_length), name="input_masks")
-    in_segment = tf.keras.layers.Input(shape=(max_seq_length), name="segment_ids")
-    bert_inputs = [in_id, in_mask, in_segment]
+def build_model_bert(max_seq_len, attention_layer):
+    in_id = layers.Input(shape=(max_seq_len), name="input_ids")
+    in_mask = layers.Input(shape=(max_seq_len), name="input_masks")
+    in_tloc = layers.Input(shape=(max_seq_len), name="input_tloc")    
+    in_segment = layers.Input(shape=(max_seq_len), name="segment_ids")
+    bert_inputs = [in_id, in_mask, in_tloc, in_segment]
     
-    mem_targ = BertLayer(pooling="mean", name="bert_layer")(bert_inputs)
-#     dense = tf.keras.layers.Dense(256, activation='relu')(bert_output)
-#     pred = tf.keras.layers.Dense(1, activation='sigmoid')(dense)
-    
-#     model = tf.keras.models.Model(inputs=bert_inputs, outputs=pred)
-#     model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-#     model.summary()
+    bert_cntx = BertLayer(pooling="mean", name="bert_cntx")(bert_inputs)
+    bert_targ = BertLayer(pooling="targ", name="bert_targ")(bert_inputs)
 
+    cntx_targ = None
     if(attention_layer):
-        att_targ = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(1, activation='tanh'), name="attention_tanh_targ")(mem_targ)
-        att_targ = tf.keras.layers.Softmax(name="attention_softmax_targ", axis=1)(att_targ)
-#         att_to_targ = tf.keras.layers.Lambda(lambda x: x[0]*tf.expand_dims(tf.cast(x[1], tf.float32), axis=-1), 
-#                                              name="attention_masked")([att_to_targ, in_mask])  # masking & normalizing not helpful?
-        mem_targ = tf.keras.layers.multiply([mem_targ, att_targ])
-
-    
-    # bert time sequence pool
-    mem_targ = tf.keras.layers.GlobalAveragePooling1D()(mem_targ)
+        ## context words to the target word
+        tg_emb_repeat = layers.RepeatVector(max_seq_len, name='targ')(bert_targ)
+        attn_layer = AttentionLayer(name='attention_layer')        
+        att_out, attn_states = attn_layer([bert_cntx, tg_emb_repeat], verbose=False)
+        
+        att_out = layers.GlobalAveragePooling1D()(att_out)
+        cntx_targ = att_out
+    else:
+        cntx_targ = bert_targ # updated target word (e.g., <UNK>) from BERT's process
     
     # final regression output MLP
-    output = tf.keras.layers.Dense(512, activation='relu')(mem_targ)
-    output = tf.keras.layers.Dense(512, activation='linear', kernel_initializer='normal')(output)
-    output = tf.keras.layers.Dropout(0.2)(output)
-    output = tf.keras.layers.Dense(256, activation='relu')(output)
-    output = tf.keras.layers.Dense(1, activation='linear', kernel_regularizer=tf.keras.regularizers.l2(np.exp(1.0)))(output)
+    output = layers.Dense(256, activation='relu')(cntx_targ)
+    output = layers.Dense(1, activation='linear')(output) #, kernel_regularizer=regularizers.l2(np.exp(0.1)))(mem)
 
     # model compile
-    model = tf.keras.models.Model(inputs=bert_inputs, outputs=output)
-    adam = tf.keras.optimizers.Adam(lr=0.001)
-    model.compile(loss='mean_absolute_error', optimizer=adam)
-#     model.summary()
-    
-    
+    model = Model([in_id, in_mask, in_tloc, in_segment], output)
+    # adam = optimizers.Adam(lr=0.0001)
+    model.compile(loss='mean_absolute_error', optimizer='adam')
+
     return model
 
 def initialize_vars(sess):
@@ -113,3 +116,17 @@ def initialize_vars(sess):
     sess.run(tf.global_variables_initializer())
     sess.run(tf.tables_initializer())
     K.set_session(sess)
+    
+    
+    
+
+
+
+
+
+#     if(attention_layer):
+#         att_targ = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(1, activation='tanh'), name="attention_tanh_targ")(mem_targ)
+#         att_targ = tf.keras.layers.Softmax(name="attention_softmax_targ", axis=1)(att_targ)
+# #         att_to_targ = tf.keras.layers.Lambda(lambda x: x[0]*tf.expand_dims(tf.cast(x[1], tf.float32), axis=-1), 
+# #                                              name="attention_masked")([att_to_targ, in_mask])  # masking & normalizing not helpful?
+#         mem_targ = tf.keras.layers.multiply([mem_targ, att_targ])    

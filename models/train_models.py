@@ -2,8 +2,12 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras.callbacks import ModelCheckpoint
+import tensorflow_hub as hub
 from models.build_models import build_model_elmo, build_model_bert, initialize_vars
+from layers.embeddings import BERT_PATH
+from bert.tokenization import FullTokenizer
 import keras_tqdm
+from tqdm import tqdm_notebook
 from livelossplot.keras import PlotLossesCallback
 
 def train_elmomod_cv(sentences, resp_scores, kf_split, _att,
@@ -45,43 +49,44 @@ def train_elmomod_cv(sentences, resp_scores, kf_split, _att,
         _fold_idx += 1
 
 
-def train_bertmod_cv(sentences, resp_scores, kf_split, _att,
-                 model_weight_loc, model_pred_loc,
-                 max_seq_len, _num_iter, _batch_size):
+def train_bertmod_cv(sentences, resp_scores, targ_incld, 
+                     kf_split, _att,
+                     model_weight_loc, model_pred_loc,
+                     max_seq_len, _num_iter, _batch_size):
     _fold_idx = 0
     plot_losses = PlotLossesCallback()
     
     for train_idx, test_idx in kf_split:
-        K.clear_session()
-        sess = tf.Session()
-
-        print("fold:", _fold_idx)
-        # preparing
-        _mod = build_model_elmo(max_seq_len, attention_layer=_att)
-        initialize_vars(sess)
-
         _sent_train = [sent[train_idx] for sent in sentences]
         _sent_test  = [sent[test_idx] for sent in sentences]
         _resp_train  = [resp_scores[i] for i in train_idx]
         _resp_test   = [resp_scores[i] for i in test_idx]
 
-        _train_examples = convert_text_to_examples(_sent_train[0], _sent_train[1], _resp_train[i])
-        _test_examples  = convert_text_to_examples(_sent_test[0],  _sent_test[1],  _resp_test[i])
-        (_train_input_ids, _train_input_masks, _train_segment_ids, _train_scores) = convert_examples_to_features(tokenizer, _train_examples, MAX_SEQ_LEN)
-        (_test_input_ids,  _test_input_masks,  _test_segment_ids,  _test_scores)  = convert_examples_to_features(tokenizer, _test_examples,  MAX_SEQ_LEN)
+        _tokenizer = create_tokenizer_from_hub_module()
+        _train_examples = convert_text_to_examples(_sent_train[0], _sent_train[1], _resp_train)
+        _test_examples  = convert_text_to_examples(_sent_test[0],  _sent_test[1],  _resp_test)
+        (_train_input_ids, _train_input_masks, _train_targ_locs, _train_segment_ids, _train_scores) = convert_examples_to_features(_tokenizer, _train_examples, targ_incld, max_seq_len)
+        (_test_input_ids,  _test_input_masks, _test_targ_locs, _test_segment_ids,  _test_scores)  = convert_examples_to_features(_tokenizer, _test_examples, targ_incld, max_seq_len)
         
+        K.clear_session()
+        sess = tf.Session()
 
-    
+        print("fold:", _fold_idx)
+        # preparing
+        _mod = build_model_bert(max_seq_len, attention_layer=_att)
+        initialize_vars(sess)
+        
         # training
-        _mod.fit(x=[_train_input_ids[i], _train_input_masks[i], _train_segment_ids[i]], y=_resp_train[i], 
+        _mod.fit(x=[_train_input_ids, _train_input_masks, _train_targ_locs, _train_segment_ids], y=_train_scores, 
                  epochs=_num_iter, batch_size=_batch_size, 
                  validation_split=0.10, shuffle=True,
                  verbose=0, 
-                 callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=False, leave_outer=True), plot_losses])
+                 callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=False, leave_outer=True), 
+                            plot_losses])
         _mod.save_weights(model_weight_loc+str(_fold_idx)+".h5")
 
         # prediction
-        _pred_test = np.reshape(_mod.predict([_test_input_ids, _test_input_masks, _test_segment_ids], 
+        _pred_test = np.reshape(_mod.predict([_test_input_ids, _test_input_masks, _test_targ_locs, _test_segment_ids], 
                                              batch_size=_batch_size), -1)    
         np.save(model_pred_loc+str(_fold_idx)+".npy", _pred_test)
 
@@ -110,6 +115,8 @@ class InputExample(object):
 
 def create_tokenizer_from_hub_module():
     # get the vocab file and casing info from the TfHub module
+    K.clear_session()
+    sess = tf.Session()
     bert_module = hub.Module(BERT_PATH)
     tokenization_info = bert_module(signature="tokenization_info", as_dict=True)
     vocab_file, do_lower_case = sess.run([tokenization_info["vocab_file"], tokenization_info["do_lower_case"]])
@@ -124,7 +131,7 @@ def convert_text_to_examples(targets, sentences, scores):
         InputExamples.append(InputExample(guid=None, targ=targ, text_a=sent, text_b=None, score=score))
     return InputExamples
 
-def convert_single_example(tokenizer, example, max_seq_length=256):
+def convert_single_example(tokenizer, example, targ_incld=False, max_seq_length=256):
     # converts a *single* `InputExample` into a single `InputFeatures`
     
     ## For TPU fixed sized paddings
@@ -136,8 +143,15 @@ def convert_single_example(tokenizer, example, max_seq_length=256):
         return input_ids, input_mask, segment_ids, score
     
     ## else: inputs for regular GPU sessions
-    tokens_targ = tokenizer.tokenize(example.targ)
-    tokens_a = tokenizer.tokenize(example.text_a)
+    tokens_targ = None
+    tokens_a = None
+    if(targ_incld):
+        tokens_targ = tokenizer.tokenize(example.targ)
+        tokens_a = tokenizer.tokenize(example.text_a)
+    else:                
+        tokens_targ = ['X']
+        tokens_a = tokenizer.tokenize(example.text_a.replace(example.targ, 'X'))
+
 #     if len(tokens_a) > max_seq_length - 2:                 # -2 when [CLS] and [SEP] are included in the data
 #         tokens_a = tokens_a[0: (max_seq_length - 2)]
     if len(tokens_a) > max_seq_length:
@@ -155,37 +169,46 @@ def convert_single_example(tokenizer, example, max_seq_length=256):
     
     targ_ids = tokenizer.convert_tokens_to_ids(tokens_targ)
     input_ids = tokenizer.convert_tokens_to_ids(tokens_sent)
+    targ_locs = [0]*len(input_ids)    
+    if(not targ_incld):
+        targ_ids = [103]
+        input_ids[input_ids.index(161)]=103
         
     # mask: 1 for real tokens; 0 for padding tokens
     input_mask = [1]*len(input_ids)
     
-    # update mask for target word tokens as 0
+    # update mask for the target word token(s) as 0
     targ_idx = [input_ids.index(x) for x in targ_ids]
     for i in targ_idx:
-        input_mask[i] = 0
-    
+        targ_locs[i] = 1
+        if(not targ_incld):
+            input_mask[i] = 0        
+        
     # zero padding up to the sequence length
     while len(input_ids) < max_seq_length:
         input_ids.append(0)
         input_mask.append(0)
+        targ_locs.append(0)
         segment_ids.append(0)
 
     assert len(input_ids) == max_seq_length
     assert len(input_mask) == max_seq_length
+    assert len(targ_locs) == max_seq_length
     assert len(segment_ids) == max_seq_length
     
-    return input_ids, input_mask, segment_ids, example.score
+    return input_ids, input_mask, targ_locs, segment_ids, example.score
 
 
-def convert_examples_to_features(tokenizer, examples, max_seq_length=256):
+def convert_examples_to_features(tokenizer, examples, targ_incld=False, max_seq_length=256):
     # converts a *set* of `InputExample`s to a list of `InputFeatures`
-    input_ids, input_masks, segment_ids, scores = [], [], [], []
+    input_ids, input_masks, targ_locs, segment_ids, scores = [], [], [], [], []
     for example in tqdm_notebook(examples, desc="Converting examples to features"):
-        input_id, input_mask, segment_id, score = convert_single_example(tokenizer, example, max_seq_length)
+        input_id, input_mask, targ_loc, segment_id, score = convert_single_example(tokenizer, example, targ_incld, max_seq_length)
         input_ids.append(input_id)
         input_masks.append(input_mask)
+        targ_locs.append(targ_loc)
         segment_ids.append(segment_id)
         scores.append(score)
     
-    return(np.array(input_ids), np.array(input_masks), np.array(segment_ids), np.array(scores).reshape(-1, 1))
+    return(np.array(input_ids), np.array(input_masks), np.array(targ_locs), np.array(segment_ids), np.array(scores).reshape(-1, 1))
         

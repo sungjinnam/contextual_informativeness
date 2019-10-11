@@ -5,6 +5,8 @@ import tensorflow_hub as hub
 from tensorflow.keras.layers import Layer
 from tensorflow.keras import backend as K
 
+# TODO: reduce the number of module calling: minimize
+
 # ===== ELMo layers using tf.hub =====
 # references:
 # https://github.com/strongio/keras-elmo/blob/master/Elmo%20Keras.ipynb
@@ -16,7 +18,7 @@ BERT_PATH = "https://tfhub.dev/google/bert_cased_L-12_H-768_A-12/1"
 class ElmoLayer(Layer):
     def __init__(self, side, **kwargs):
         self.dimensions = 1024
-        self.trainable = False
+        self.trainable = True
         # self.direction = direction
         self.side = side
         # self.mask_zero = mask_zero
@@ -24,8 +26,8 @@ class ElmoLayer(Layer):
         
     def build(self, input_shape):        
         self.elmo = hub.Module(ELMO_PATH, trainable=self.trainable, name="{}_module".format(self.name))
-        # if(self.trainable):
-        #     self.trainable_weights += tf.trainable_variables(scope="^{}_module/.*".format(self.name))
+        if(self.trainable):
+            self._trainable_weights += tf.trainable_variables(scope="^{}_module/.*".format(self.name))
         super(ElmoLayer, self).build(input_shape)
         
     def call(self, inputs):
@@ -67,7 +69,7 @@ class ElmoLayer(Layer):
             result = mul_mask(result, tf.cast(input_mask_RH, tf.float32))
             ret_mask = input_mask_RH
         elif(self.side == "tg"):
-            last_idx = tf.not_equal(input_mask_LH, 1) # True:if the first value of the LH mask is not one
+            last_idx = tf.equal(input_mask_LH, 1) # True:if the first value of the LH mask is not one
             last_idx = tf.reduce_sum(tf.cast(last_idx, tf.int32), axis=1) # last idx for non one vector
             last_idx = tf.stack([tf.range(tf.shape(last_idx)[0]), last_idx], axis=1) # last idx as matrix
             result = tf.gather_nd(result, last_idx)
@@ -108,7 +110,7 @@ class BertLayer(tf.keras.layers.Layer):
         self.output_size = 768
         self.pooling = pooling
         self.bert_path = bert_path
-        if self.pooling not in ["first", "mean"]:
+        if self.pooling not in ["first", "mean", "targ", "seq"]:
             raise NameError(f"Undefined pooling type (must be either first or mean, but is {self.pooling})")
         super(BertLayer, self).__init__(**kwargs)
         
@@ -123,23 +125,26 @@ class BertLayer(tf.keras.layers.Layer):
         
     def call(self, inputs):
         inputs = [K.cast(x, dtype="int32") for x in inputs]
-        input_ids, input_mask, segment_ids = inputs
+        input_ids, input_mask, input_tloc, segment_ids = inputs
         bert_inputs = dict(input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids) # TODO: separate masking between BERT vector fetching vs. model input maksings?
-        
+        mul_mask = lambda x, m: x * tf.expand_dims(m, axis=-1)
+                
         if self.pooling=="first":
             pooled = self.bert(inputs=bert_inputs, signature="tokens", as_dict=True)["pooled_output"]
-        elif self.pooling=="mean":
-            result = self.bert(inputs=bert_inputs, signature="tokens", as_dict=True)["sequence_output"]
-            mul_mask = lambda x, m: x * tf.expand_dims(m, axis=-1)
-            # masked_reduce_mean = lambda x, m: tf.reduce_sum(mul_mask(x, m), axis=1) / (tf.reduce_sum(m, axis=1, keepdims=True) + 1e-10)
-            # masked_reduce = lambda x, m: tf.reduce_sum(mul_mask(x, m), axis=1)    
-            # mul_mask = lambda x, m: x
-            input_mask = tf.cast(input_mask, tf.float32)            
-            # pooled = masked_reduce_mean(result, input_mask)
-            pooled = mul_mask(result, input_mask)
         else:
-            raise NameError(f"Undefined pooling type (must be either first or mean, but is {self.pooling})")
-        
+            result = self.bert(inputs=bert_inputs, signature="tokens", as_dict=True)["sequence_output"]
+            if self.pooling=="mean":            
+                # masked_reduce_mean = lambda x, m: tf.reduce_sum(mul_mask(x, m), axis=1) / (tf.reduce_sum(m, axis=1, keepdims=True) + 1e-10)
+                # masked_reduce = lambda x, m: tf.reduce_sum(mul_mask(x, m), axis=1)    
+                # mul_mask = lambda x, m: x
+                input_mask = tf.cast(input_mask, tf.float32)            
+                # pooled = masked_reduce_mean(result, input_mask)
+                pooled = mul_mask(result, input_mask)
+            elif self.pooling=="targ":
+                targ_mask = tf.cast(input_tloc, tf.float32)
+                pooled = tf.reduce_sum(mul_mask(result, targ_mask), axis=1) / tf.reduce_sum(targ_mask, axis=1, keepdims=True)
+            elif self.pooling=="seq":
+                pooled = result
         return pooled
     
     def compute_output_shape(self, input_shape):
