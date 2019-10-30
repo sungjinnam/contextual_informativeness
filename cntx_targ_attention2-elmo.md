@@ -57,7 +57,8 @@ from livelossplot.keras import PlotLossesCallback
 from layers.embeddings import ElmoLayer
 from layers.attention import AttentionLayer
 from models.build_models import build_model_elmo, initialize_vars
-from models.train_models import train_elmomod_cv
+from models.train_models import *
+from utils.utils import *
 ```
 
 ```python
@@ -96,29 +97,31 @@ except:
 <!-- #endregion -->
 
 ```python
-# some constants
-RDM_SEED = 1
-K_FOLDS = 5
-MAX_SEQ_LEN = 20
 FILTERS = '"#$%&()*+/:;=@[\\]^_`{|}~\t\n'
 ```
 
+```python
+[i for i in range(3)]
+```
+
 ```python colab={} colab_type="code" id="Ac6_DVsSNPo6"
+# MAX_SEQ_LEN = 150
 def proc_sentences(df, col_sentence, col_targ):
     sentences = []
-    li_mask_LH = []
-    li_mask_RH = []
+#     li_mask_LH = []
+#     li_mask_RH = []
     li_mask_cntx = []
+    li_mask_targ = []
 #     li_targ = []
-    li_targ_idx = []
+#     li_targ_idx = []
     li_sent_len = []
     li_sent_pad = []
     for i in range(df.shape[0]):
-        sent = df[col_sentence][i]
+        sent = df.iloc[i][col_sentence]
         
         targ = None
         if(col_targ):
-            targ = df[col_targ][i]
+            targ = df.iloc[i][col_targ]
         else:
             targ = "<UNK>"
         
@@ -128,35 +131,56 @@ def proc_sentences(df, col_sentence, col_targ):
         sent_pad = pad_sequences([sent_tok], maxlen=MAX_SEQ_LEN, dtype='object', padding='post', value=[""])       
         targ_idx = np.where(targ==sent_pad[0])[0][0]
         
-        mask_LH = [0]*(MAX_SEQ_LEN)
-        mask_RH = [0]*(MAX_SEQ_LEN)
+        mask_targ = [0]*(MAX_SEQ_LEN)
+        mask_targ[targ_idx] = 1
+#         mask_LH = [0]*(MAX_SEQ_LEN)
+#         mask_RH = [0]*(MAX_SEQ_LEN)
+        mask_cntx = [0]*(MAX_SEQ_LEN)
         for i in range(targ_idx):
-            mask_LH[i] = 1
-        for i in range(targ_idx+1, len(sent_tok)):
-            mask_RH[i] = 1
+            mask_cntx[i] = 1
+        if(col_targ):
+            for i in range(targ_idx, len(sent_tok)):
+                mask_cntx[i] = 1
+        else:
+            for i in range(targ_idx+1, len(sent_tok)):
+                mask_cntx[i] = 1
+    
+#         for i in range(targ_idx):
+#             mask_LH[i] = 1
+#         for i in range(targ_idx+1, len(sent_tok)):
+#             mask_RH[i] = 1
         
         sent_len = len(sent_tok)
         
 #         li_targ.append(targ)
-        li_targ_idx.append(targ_idx)
+#         li_targ_idx.append(targ_idx)
         li_sent_len.append(sent_len)
         li_sent_pad.append(list(sent_pad)[0])
-        li_mask_LH.append(mask_LH)
-        li_mask_RH.append(mask_RH)
+        li_mask_cntx.append(mask_cntx)
+        li_mask_targ.append(mask_targ)
+#         li_mask_LH.append(mask_LH)
+#         li_mask_RH.append(mask_RH)
 #     sentences = [np.array(li_targ_idx), np.array(li_sent_len), np.array(li_sent_pad), np.array(li_targ)]
 #     sentences = [np.array(li_targ_idx), np.array(li_sent_len), np.array(li_sent_pad)]
-    sentences = [np.array(li_sent_len), np.array(li_sent_pad), # np.array(li_targ_idx),
-                 np.array(li_mask_LH), np.array(li_mask_RH)] #, np.sum((li_mask_LH, li_mask_RH), axis=0)]
+#     sentences = [np.array(li_sent_len), np.array(li_sent_pad), # np.array(li_targ_idx),
+#                  np.array(li_mask_LH), np.array(li_mask_RH)] #, np.sum((li_mask_LH, li_mask_RH), axis=0)]
+    sentences = [np.array(li_sent_len), np.array(li_sent_pad), np.array(li_mask_cntx), np.array(li_mask_targ)]
     return(sentences)
 ```
 
 ```python colab={} colab_type="code" id="Ac6_DVsSNPo6"
-sentences = proc_sentences(df_cloze, 'sentence', 'syn1')
+sentences_wttarg = proc_sentences(df_cloze, 'sentence', 'syn1')
 sentences_notarg = proc_sentences(df_cloze, 'sentence', None)
 ```
 
 ```python
-sentences
+# import pickle
+# with open("dscovar_sentences_wttarg_elmo_max150.pickle", "wb") as f: pickle.dump(sentences_wttarg, f)
+# with open("dscovar_sentences_notarg_elmo_max150.pickle", "wb") as f: pickle.dump(sentences_notarg, f)
+```
+
+```python
+len(sentences_wttarg[1][0])
 ```
 
 ```python
@@ -183,6 +207,10 @@ resp_bws = resp_scores[:, 4]
 sent_len = resp_scores[:, 5]
 ```
 
+```python
+# with open("resp_bws.pickle", "wb") as f: pickle.dump(resp_bws, f)
+```
+
 ```python colab={"base_uri": "https://localhost:8080/", "height": 566} colab_type="code" executionInfo={"elapsed": 14111, "status": "ok", "timestamp": 1569434167349, "user": {"displayName": "Sungjin Nam", "photoUrl": "https://lh3.googleusercontent.com/a-/AAuE7mBm-uC84SkKpzTdRb5oXH6uwwAa0rYUGVejNpoZyg=s64", "userId": "06295554822278854914"}, "user_tz": 240} id="dMBnF8u4RUm9" outputId="8ba84efe-5ea6-4f04-829f-797a89d9c9e7"
 sns.pairplot(pd.DataFrame({"resp_lex":resp_lex, 
                            "resp_lmo":resp_lmo, "resp_brt":resp_brt, "resp_glv":resp_glv, 
@@ -198,7 +226,7 @@ sns.pairplot(pd.DataFrame({"resp_lex":resp_lex,
 K.clear_session()
 sess = tf.Session()
 
-model = build_model_elmo(MAX_SEQ_LEN, attention_layer=True)
+model = build_model_elmo(MAX_SEQ_LEN, finetune_emb=True, attention_layer=True, sep_cntx_targ=False)
 initialize_vars(sess)
 
 model.summary()
@@ -206,6 +234,86 @@ model.summary()
 
 ```python
 plot_model(model)
+```
+
+```python
+model.get_layer("input_sent_len").trainable
+```
+
+```python
+
+```
+
+```python
+K.eval(tf.add(tf.zeros(10), 
+              tf.expand_dims(tf.ones(3), axis=-1)))
+```
+
+```python
+K.eval(tf.concat([tf.zeros(2), 
+                  tf.ones(3)], axis=-1))
+```
+
+```python
+K.eval(tf.range(10) < tf.constant(3))
+```
+
+```python
+
+```
+
+```python
+[sent[:1] for sent in sentences_notarg]
+```
+
+```python
+model.inputs
+```
+
+```python
+model.get_layer("attention_layer").output
+```
+
+```python
+model.get_layer("attention_sfmx").weights
+```
+
+```python
+tt_mod = Model(model.inputs, model.get_layer("attention_sfmx").output)
+tt = tt_mod.predict([sent[:1] for sent in sentences_notarg])
+tt.shape
+```
+
+```python
+tt[:,0,:]
+```
+
+```python
+tt_mod = Model(model.inputs, model.get_layer("elmo_cntx").output)
+tt_mod.predict([sent[:1] for sent in sentences_notarg])
+```
+
+```python
+tt_mod = Model(model.inputs, model.get_layer("elmo_targ").output)
+tt_mod.predict([sent[:1] for sent in sentences_notarg])
+```
+
+```python
+K.clear_session()
+sess = tf.Session()
+
+model = build_model_elmo(MAX_SEQ_LEN, finetune_emb=True, attention_layer=True, sep_cntx_targ=True)
+initialize_vars(sess)
+
+model.summary()
+```
+
+```python
+plot_model(model)
+```
+
+```python
+
 ```
 
 # K-fold training and predictions 
@@ -235,9 +343,6 @@ sent_len_cat.value_counts()
 ```
 
 ```python
-_num_iter = 15
-_batch_size = 64
-
 # fold settings
 gkf1 = GroupKFold(n_splits=K_FOLDS) ## target words
 gkf2 = GroupKFold(n_splits=len(Counter(targ_loc_cat))) ## target word locations
@@ -250,412 +355,104 @@ gkf3 = GroupKFold(n_splits=len(sent_len_cat.value_counts())) ## sentence length
 ## fold: target words
 
 ```python
-X = sentences
+X_wttarg = sentences_wttarg
 X_notarg = sentences_notarg
 y = resp_bws
 y_type = 'bws'
 ```
 
-### including target word
+## w.o attention (notune ELMo layer weights)
 
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_elmomod_cv(X, y, 
-                 gkf_split, False,
-                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvTwrd", 
-                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
 
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_elmomod_cv(X, y, 
-                 gkf_split, True,
-                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvTwrd", 
-                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
+### 1emb 
 
 ```python
 gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
 train_elmomod_cv(X_notarg, y,
-                 gkf_split, False,
-                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvTwrd",  
-                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
+                 gkf_split, False, False, False,
+                 "./model_weights/notune/elmo/1emb/model_elmo_notarg_noattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/notune/elmo/1emb/preds_elmo_notarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
 ```
+
+### 2emb 
+- not necessary if the model does not do finetuning of embedding layer(s)
+
+
+## /w attention (finetune ELMo layer weights)
+
+
+### 1emb 
 
 ```python
 gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
 train_elmomod_cv(X_notarg, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvTwrd",  
-                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
+                 gkf_split, False, True, False,
+                 "./model_weights/notune/elmo/1emb/model_elmo_notarg_wtattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/notune/elmo/1emb/preds_elmo_notarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
 ```
 
-## fold: target word locations
+### 2emb 
+- not necessary if the model does not do finetuning of embedding layer(s)
 
 
-### including target word
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_elmomod_cv(X, y,
-                 gkf_split, False,
-                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_elmomod_cv(X, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_elmomod_cv(X_notarg, y, 
-                 gkf_split, False,
-                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_elmomod_cv(X_notarg, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-## fold: sent length
+## w.o attention (finetune ELMo layer weights)
 
 
-### including target word
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_elmomod_cv(X, y,
-                 gkf_split, False,
-                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_elmomod_cv(X, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_elmomod_cv(X_notarg, y, 
-                 gkf_split, False,
-                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_elmomod_cv(X_notarg, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-# Fitted to: Semantic distance
-
-
-## fold: target words
-
-```python
-X = sentences
-X_notarg = sentences_notarg
-y = resp_lmo
-y_type = 'lmo'
-```
-
-### including target word
-
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_elmomod_cv(X, y, 
-                 gkf_split, False,
-                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvTwrd", 
-                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_elmomod_cv(X, y, 
-                 gkf_split, True,
-                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvTwrd", 
-                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
+### 1emb 
 
 ```python
 gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
 train_elmomod_cv(X_notarg, y,
-                 gkf_split, False,
-                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvTwrd",  
-                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
+                 gkf_split, True, False, False,
+                 "./model_weights/finetune/elmo/1emb/model_elmo_notarg_noattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
 ```
+
+### 2emb 
 
 ```python
 gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
 train_elmomod_cv(X_notarg, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvTwrd",  
-                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
+                 gkf_split, True, False, True,
+                 "./model_weights/finetune/elmo/2emb/model_elmo_notarg_noattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
 ```
 
-## fold: target word locations
+## /w attention (finetune ELMo layer weights)
 
 
-### including target word
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_elmomod_cv(X, y,
-                 gkf_split, False,
-                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_elmomod_cv(X, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_elmomod_cv(X_notarg, y, 
-                 gkf_split, False,
-                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_elmomod_cv(X_notarg, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-## fold: sent length
-
-
-### including target word
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_elmomod_cv(X, y,
-                 gkf_split, False,
-                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_elmomod_cv(X, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_elmomod_cv(X_notarg, y, 
-                 gkf_split, False,
-                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_elmomod_cv(X_notarg, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-# Fitted to: Lexical entropy
-
-
-## fold: target words
-
-```python
-X = sentences
-X_notarg = sentences_notarg
-y = resp_lex
-y_type = 'lex'
-```
-
-## fold: sent length
-
-
-### including target word
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_elmomod_cv(X, y,
-                 gkf_split, False,
-                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_elmomod_cv(X, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_elmomod_cv(X_notarg, y, 
-                 gkf_split, False,
-                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_elmomod_cv(X_notarg, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### including target word
-
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_elmomod_cv(X, y, 
-                 gkf_split, False,
-                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvTwrd", 
-                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_elmomod_cv(X, y, 
-                 gkf_split, True,
-                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvTwrd", 
-                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
+### 1emb 
 
 ```python
 gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
 train_elmomod_cv(X_notarg, y,
-                 gkf_split, False,
-                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvTwrd",  
-                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
+                 gkf_split, True, True, False,
+                 "./model_weights/finetune/elmo/1emb/model_elmo_notarg_wtattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
 ```
+
+### 2emb 
 
 ```python
 gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
 train_elmomod_cv(X_notarg, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvTwrd",  
-                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-## fold: target word locations
-
-
-### including target word
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_elmomod_cv(X, y,
-                 gkf_split, False,
-                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
+                 gkf_split, True, True, True,
+                 "./model_weights/finetune/elmo/2emb/model_elmo_notarg_wtattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
 ```
 
 ```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_elmomod_cv(X, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
 
-### target word as oov token
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_elmomod_cv(X_notarg, y, 
-                 gkf_split, False,
-                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
 ```
 
 ```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_elmomod_cv(X_notarg, y,
-                 gkf_split, True,
-                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
+
 ```
 
 ```python
@@ -663,46 +460,6 @@ train_elmomod_cv(X_notarg, y,
 ```
 
 # Classification performance 
-
-```python
-def roc_cv(cv_true_scores, pred_score_file_loc, score_type, cut, direction, fig, ax, col, ls):
-    tprs = []
-    aucs = []
-    mean_fpr = np.linspace(0, 1, 100)
-    pred_score_files = sorted(glob.glob(pred_score_file_loc))
-
-    for i in range(len(cv_true_scores)):
-        if(direction=="high"):
-            fpr, tpr, _ = roc_curve(cv_true_scores[i] > np.quantile(cv_true_scores[i], q=[cut]), np.load(pred_score_files[i]))
-        if(direction=="low"):
-            fpr, tpr, _ = roc_curve(cv_true_scores[i] < np.quantile(cv_true_scores[i], q=[cut]), 1-np.load(pred_score_files[i]))
-        tprs.append(interp(mean_fpr, fpr, tpr))
-        tprs[-1][0] = 0.0
-        roc_auc = auc(fpr, tpr)
-        aucs.append(roc_auc)
-        # sns.lineplot(fpr, tpr)
-        ax.plot(fpr, tpr, 
-                color=col, alpha=0.1,
-                # label = 'ROC fold %d (AUC=%0.2f, n=%d)' % (i, roc_auc, fold_set.shape[0])
-               )
-
-    mean_tpr = np.mean(tprs, axis=0)
-    mean_tpr[-1] = 1.0
-    mean_auc = auc(mean_fpr, mean_tpr)
-    std_auc = np.std(aucs)    
-    ax.plot(mean_fpr, mean_tpr, 
-             color=col, alpha=1, linestyle=ls,
-             label=r'Mean ROC:'+score_type+' (AUC = %0.2f $\pm$ %0.2f)' % (mean_auc, 1.96*std_auc),
-             lw=2)
-
-    ax.set_xlim([-0.05, 1.05])
-    ax.set_ylim([-0.05, 1.05])
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.set_title('ROC__'+str(cut)+"_"+str(direction)+'_5-fold')
-    # ax.legend(loc=4, bbox_to_anchor=(0.5, -0.2))
-    ax.legend()
-```
 
 ```python
 sent_test_cvTwrd = []
@@ -725,21 +482,21 @@ resp_lmo_cvSlen = []
 
 
 for train_idx, test_idx in gkf1.split(df_cloze['sentence'], groups=df_cloze['targ']):
-    sent_test_cvTwrd.append([sent[test_idx] for sent in sentences])
+    sent_test_cvTwrd.append([sent[test_idx] for sent in sentences_wttarg])
     sent_test_cvTwrd2.append([sent[test_idx] for sent in sentences_notarg])
     resp_bws_cvTwrd.append([resp_bws[i] for i in test_idx])
     resp_lmo_cvTwrd.append([resp_lmo[i] for i in test_idx])
     resp_lex_cvTwrd.append([resp_lex[i] for i in test_idx])
     
 for train_idx, test_idx in gkf2.split(df_cloze['sentence'], groups=targ_loc_cat):
-    sent_test_cvTloc.append([sent[test_idx] for sent in sentences])
+    sent_test_cvTloc.append([sent[test_idx] for sent in sentences_wttarg])
     sent_test_cvTloc2.append([sent[test_idx] for sent in sentences_notarg])
     resp_bws_cvTloc.append([resp_bws[i] for i in test_idx])
     resp_lmo_cvTloc.append([resp_lmo[i] for i in test_idx])
     resp_lex_cvTloc.append([resp_lex[i] for i in test_idx])
     
 for train_idx, test_idx in gkf3.split(df_cloze['sentence'], groups=sent_len_cat):
-    sent_test_cvSlen.append([sent[test_idx] for sent in sentences])
+    sent_test_cvSlen.append([sent[test_idx] for sent in sentences_wttarg])
     sent_test_cvSlen2.append([sent[test_idx] for sent in sentences_notarg])
     resp_bws_cvSlen.append([resp_bws[i] for i in test_idx])
     resp_lmo_cvSlen.append([resp_lmo[i] for i in test_idx])
@@ -769,20 +526,23 @@ sent_len_cat.value_counts()
 fig, axes = plt.subplots(ncols=3, figsize=(24, 6))
 tt_col = sns.color_palette("colorblind", 6)
 
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_wttarg_noattn_bws_cvTwrd*", "elmo_wttarg_noattn_bws_cvTwrd", 0.50, "high", fig, axes[0], tt_col[0], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_wttarg_wtattn_bws_cvTwrd*", "elmo_wttarg_wtattn_bws_cvTwrd", 0.50, "high", fig, axes[0], tt_col[1], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_notarg_noattn_bws_cvTwrd*", "elmo_notarg_noattn_bws_cvTwrd", 0.50, "high", fig, axes[0], tt_col[2], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_notarg_wtattn_bws_cvTwrd*", "elmo_notarg_wtattn_bws_cvTwrd", 0.50, "high", fig, axes[0], tt_col[3], '-')
+roc_cv(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_noattn_bws_cvTwrd*", "elmo_notarg_noattn_bws_1emb", 0.50, "high", fig, axes[0], tt_col[0], '-')
+roc_cv(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_noattn_bws_cvTwrd*", "elmo_notarg_noattn_bws_2emb", 0.50, "high", fig, axes[0], tt_col[1], '-')
+roc_cv(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd*", "elmo_notarg_wtattn_bws_1emb", 0.50, "high", fig, axes[0], tt_col[2], '-')
+roc_cv(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd*", "elmo_notarg_wtattn_bws_2emb", 0.50, "high", fig, axes[0], tt_col[3], '-')
+roc_cv(resp_bws_cvTwrd, "./model_predict/notune/elmo/1emb/preds_elmo_notarg_noattn_bws_cvTwrd*", "elmo_notarg_noattn_bws_1emb_notune", 0.50, "high", fig, axes[0], tt_col[4], '-')
+roc_cv(resp_bws_cvTwrd, "./model_predict/notune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd*", "elmo_notarg_wtattn_bws_1emb_notune", 0.50, "high", fig, axes[0], tt_col[5], '-')
 
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_wttarg_noattn_bws_cvTwrd*", "elmo_wttarg_noattn_bws_cvTwrd", 0.25, "high", fig, axes[1], tt_col[0], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_wttarg_wtattn_bws_cvTwrd*", "elmo_wttarg_wtattn_bws_cvTwrd", 0.25, "high", fig, axes[1], tt_col[1], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_notarg_noattn_bws_cvTwrd*", "elmo_notarg_noattn_bws_cvTwrd", 0.25, "high", fig, axes[1], tt_col[2], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_notarg_wtattn_bws_cvTwrd*", "elmo_notarg_wtattn_bws_cvTwrd", 0.25, "high", fig, axes[1], tt_col[3], '-')
 
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_wttarg_noattn_bws_cvTwrd*", "elmo_wttarg_noattn_bws_cvTwrd", 0.10, "high", fig, axes[2], tt_col[0], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_wttarg_wtattn_bws_cvTwrd*", "elmo_wttarg_wtattn_bws_cvTwrd", 0.10, "high", fig, axes[2], tt_col[1], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_notarg_noattn_bws_cvTwrd*", "elmo_notarg_noattn_bws_cvTwrd", 0.10, "high", fig, axes[2], tt_col[2], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_notarg_wtattn_bws_cvTwrd*", "elmo_notarg_wtattn_bws_cvTwrd", 0.10, "high", fig, axes[2], tt_col[3], '-')
+# roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_wttarg_noattn_bws_cvTwrd*", "elmo_wttarg_noattn_bws_cvTwrd", 0.25, "high", fig, axes[1], tt_col[0], '-')
+# roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_wttarg_wtattn_bws_cvTwrd*", "elmo_wttarg_wtattn_bws_cvTwrd", 0.25, "high", fig, axes[1], tt_col[1], '-')
+# roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_notarg_noattn_bws_cvTwrd*", "elmo_notarg_noattn_bws_cvTwrd", 0.25, "high", fig, axes[1], tt_col[2], '-')
+# roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_notarg_wtattn_bws_cvTwrd*", "elmo_notarg_wtattn_bws_cvTwrd", 0.25, "high", fig, axes[1], tt_col[3], '-')
+
+# roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_wttarg_noattn_bws_cvTwrd*", "elmo_wttarg_noattn_bws_cvTwrd", 0.10, "high", fig, axes[2], tt_col[0], '-')
+# roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_wttarg_wtattn_bws_cvTwrd*", "elmo_wttarg_wtattn_bws_cvTwrd", 0.10, "high", fig, axes[2], tt_col[1], '-')
+# roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_notarg_noattn_bws_cvTwrd*", "elmo_notarg_noattn_bws_cvTwrd", 0.10, "high", fig, axes[2], tt_col[2], '-')
+# roc_cv(resp_bws_cvTwrd, "./model_predict/preds_elmo_notarg_wtattn_bws_cvTwrd*", "elmo_notarg_wtattn_bws_cvTwrd", 0.10, "high", fig, axes[2], tt_col[3], '-')
 
 ```
 
@@ -1271,10 +1031,6 @@ print("MAE: ", round(np.abs(np.array(tt_obs) - np.array(tt_preds)).mean(), 3),
 ```
 
 ```python
-np.abs(np.array(tt_obs) - np.array(tt_preds)).std()
-```
-
-```python
 tt_files = sorted(glob.glob("./model_predict/preds_elmo_notarg_noattn_bws_cvTwrd*"))
 tt_preds = [np.load(f) for f in tt_files]
 tt_preds = [x for xx in tt_preds for x in xx]
@@ -1328,7 +1084,8 @@ np.not_equal(sent_test_cvTwrd2[0][1][0], '')
 
 ```python
 def draw_attn_tok(attn_weights, sent_input, true_score, pred_score, _label, ax, _align_edge=None):
-    attn_score = attn_weights * np.not_equal(sent_input[1], '') # (sent_input[2]+sent_input[3])
+    sent_mask = np.not_equal(sent_input[1], '')
+    attn_score = attn_weights * sent_mask # (sent_input[2]+sent_input[3])
     attn_score = min_max_sc(attn_score)
     
     if(_align_edge is None):
@@ -1339,6 +1096,18 @@ def draw_attn_tok(attn_weights, sent_input, true_score, pred_score, _label, ax, 
                  ", pred score: "+str(round(pred_score, 3)))    
     ax.tick_params(axis='x', rotation=90)
     ax.legend()
+```
+
+```python
+
+```
+
+```python
+hi_test_idx15
+```
+
+```python
+tt_notarg_attn[10]
 ```
 
 ```python
@@ -1564,4 +1333,457 @@ for i in range(len(tt_notarg_attn)):
 
 ```python
 
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+# -----JUNKS----- 
+
+
+### including target word
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_elmomod_cv(X_wttarg, y, 
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvTwrd", 
+                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_elmomod_cv(X_wttarg, y, 
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvTwrd", 
+                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+## fold: target word locations
+
+
+### including target word
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_elmomod_cv(X_wttarg, y,
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_elmomod_cv(X_wttarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_elmomod_cv(X_notarg, y, 
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_elmomod_cv(X_notarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+## fold: sent length
+
+
+### including target word
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_elmomod_cv(X_wttarg, y,
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_elmomod_cv(X_wttarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_elmomod_cv(X_notarg, y, 
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_elmomod_cv(X_notarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+# Fitted to: Semantic distance
+
+
+## fold: target words
+
+```python
+X_wttarg = sentences_wttarg
+X_notarg = sentences_notarg
+y = resp_lmo
+y_type = '2emb_lmo'
+```
+
+### including target word
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_elmomod_cv(X_wttarg, y, 
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvTwrd", 
+                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_elmomod_cv(X_wttarg, y, 
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvTwrd", 
+                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_elmomod_cv(X_notarg, y,
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_elmomod_cv(X_notarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+## fold: target word locations
+
+
+### including target word
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_elmomod_cv(X_wttarg, y,
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_elmomod_cv(X_wttarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_elmomod_cv(X_notarg, y, 
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_elmomod_cv(X_notarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+## fold: sent length
+
+
+### including target word
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_elmomod_cv(X_wttarg, y,
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_elmomod_cv(X_wttarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_elmomod_cv(X_notarg, y, 
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_elmomod_cv(X_notarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+# Fitted to: Lexical entropy
+
+
+## fold: target words
+
+```python
+X_wttarg = sentences_wttarg
+X_notarg = sentences_notarg
+y = resp_lex
+y_type = '2emb_lex'
+```
+
+## fold: sent length
+
+
+### including target word
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_elmomod_cv(X_wttarg, y,
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_elmomod_cv(X_wttarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_elmomod_cv(X_notarg, y, 
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_elmomod_cv(X_notarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### including target word
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_elmomod_cv(X_wttarg, y, 
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvTwrd", 
+                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_elmomod_cv(X_wttarg, y, 
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvTwrd", 
+                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_elmomod_cv(X_notarg, y,
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_elmomod_cv(X_notarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+## fold: target word locations
+
+
+### including target word
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_elmomod_cv(X_wttarg, y,
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_wttarg_noattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_elmo_wttarg_noattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_elmomod_cv(X_wttarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_wttarg_wtattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_elmo_wttarg_wtattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_elmomod_cv(X_notarg, y, 
+                 gkf_split, False, True,
+                 "./model_weights/model_elmo_notarg_noattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_elmo_notarg_noattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_elmomod_cv(X_notarg, y,
+                 gkf_split, True, True,
+                 "./model_weights/model_elmo_notarg_wtattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_elmo_notarg_wtattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
 ```

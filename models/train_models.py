@@ -10,9 +10,16 @@ import keras_tqdm
 from tqdm import tqdm_notebook
 from livelossplot.keras import PlotLossesCallback
 
-def train_elmomod_cv(sentences, resp_scores, kf_split, _att,
+NUM_ITER = 10
+BATCH_SIZE = 16
+RDM_SEED = 1
+K_FOLDS = 5
+MAX_SEQ_LEN = 30
+
+def train_elmomod_cv(sentences, resp_scores, kf_split, 
+                     _emb, _att, _sep,
                      model_weight_loc, model_pred_loc,
-                     max_seq_len, _num_iter, _batch_size):
+                     max_seq_len, _l_rate, _num_iter, _batch_size):
     _fold_idx = 0
     plot_losses = PlotLossesCallback()
 #     checkpoint = ModelCheckpoint(model_weight_loc+str(_fold_idx)+".h5", 
@@ -25,7 +32,7 @@ def train_elmomod_cv(sentences, resp_scores, kf_split, _att,
 
         print("fold:", _fold_idx)
         # preparing
-        _mod = build_model_elmo(max_seq_len, attention_layer=_att)
+        _mod = build_model_elmo(max_seq_len, finetune_emb=_emb, attention_layer=_att, sep_cntx_targ=_sep, lr=_l_rate)
         initialize_vars(sess)
 
         _sent_train = [sent[train_idx] for sent in sentences]
@@ -40,19 +47,19 @@ def train_elmomod_cv(sentences, resp_scores, kf_split, _att,
                  verbose=0, 
                  callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=False, leave_outer=True), 
                             plot_losses])
-        _mod.save_weights(model_weight_loc+str(_fold_idx)+".h5")
+        _mod.save_weights(model_weight_loc+"_cv"+str(_fold_idx)+".h5")
 
         # prediction
         _pred_test = np.reshape(_mod.predict(_sent_test, batch_size=_batch_size), -1)    
-        np.save(model_pred_loc+str(_fold_idx)+".npy", _pred_test)
+        np.save(model_pred_loc+"_cv"+str(_fold_idx)+".npy", _pred_test)
 
         _fold_idx += 1
 
 
 def train_bertmod_cv(sentences, resp_scores, targ_incld, 
-                     kf_split, _att,
+                     kf_split, _emb, _att, _sep,
                      model_weight_loc, model_pred_loc,
-                     max_seq_len, _num_iter, _batch_size):
+                     max_seq_len, _l_rate, _num_iter, _batch_size):
     _fold_idx = 0
     plot_losses = PlotLossesCallback()
     
@@ -73,7 +80,7 @@ def train_bertmod_cv(sentences, resp_scores, targ_incld,
 
         print("fold:", _fold_idx)
         # preparing
-        _mod = build_model_bert(max_seq_len, attention_layer=_att)
+        _mod = build_model_bert(max_seq_len, finetune_emb=_emb, attention_layer=_att, sep_cntx_targ=_sep, lr=_l_rate)
         initialize_vars(sess)
         
         # training
@@ -83,14 +90,16 @@ def train_bertmod_cv(sentences, resp_scores, targ_incld,
                  verbose=0, 
                  callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=False, leave_outer=True), 
                             plot_losses])
-        _mod.save_weights(model_weight_loc+str(_fold_idx)+".h5")
+        _mod.save_weights(model_weight_loc+"_cv"+str(_fold_idx)+".h5")
 
         # prediction
         _pred_test = np.reshape(_mod.predict([_test_input_ids, _test_input_masks, _test_targ_locs, _test_segment_ids], 
                                              batch_size=_batch_size), -1)    
-        np.save(model_pred_loc+str(_fold_idx)+".npy", _pred_test)
+        np.save(model_pred_loc+"_cv"+str(_fold_idx)+".npy", _pred_test)
 
         _fold_idx += 1  
+
+    return None
         
         
 class PaddingInputExample(object):
@@ -169,7 +178,7 @@ def convert_single_example(tokenizer, example, targ_incld=False, max_seq_length=
     
     targ_ids = tokenizer.convert_tokens_to_ids(tokens_targ)
     input_ids = tokenizer.convert_tokens_to_ids(tokens_sent)
-    targ_locs = [0]*len(input_ids)    
+    targ_locs = [0]*len(input_ids)
     if(not targ_incld):
         targ_ids = [103]
         input_ids[input_ids.index(161)]=103
@@ -196,19 +205,74 @@ def convert_single_example(tokenizer, example, targ_incld=False, max_seq_length=
     assert len(targ_locs) == max_seq_length
     assert len(segment_ids) == max_seq_length
     
-    return input_ids, input_mask, targ_locs, segment_ids, example.score
+    return input_ids, input_mask, segment_ids, targ_locs, example.score
 
 
 def convert_examples_to_features(tokenizer, examples, targ_incld=False, max_seq_length=256):
     # converts a *set* of `InputExample`s to a list of `InputFeatures`
-    input_ids, input_masks, targ_locs, segment_ids, scores = [], [], [], [], []
+    input_ids, input_masks, segment_ids, targ_locs, scores = [], [], [], [], []
     for example in tqdm_notebook(examples, desc="Converting examples to features"):
-        input_id, input_mask, targ_loc, segment_id, score = convert_single_example(tokenizer, example, targ_incld, max_seq_length)
-        input_ids.append(input_id)
-        input_masks.append(input_mask)
-        targ_locs.append(targ_loc)
-        segment_ids.append(segment_id)
-        scores.append(score)
+        try: 
+            input_id, input_mask, segment_id, targ_loc, score = convert_single_example(tokenizer, example, targ_incld, max_seq_length)
+            input_ids.append(input_id)
+            input_masks.append(input_mask)
+            segment_ids.append(segment_id)
+            targ_locs.append(targ_loc)        
+            scores.append(score)
+        except:
+            print(example)
     
-    return(np.array(input_ids), np.array(input_masks), np.array(targ_locs), np.array(segment_ids), np.array(scores).reshape(-1, 1))
+    return(np.array(input_ids), np.array(input_masks), np.array(segment_ids), np.array(targ_locs), np.array(scores).reshape(-1, 1))
         
+    
+# _err_sent_idx = []
+# def proc_sentences(df, _maxlen, col_sentence, col_targ, col_score, incld_targ=True):
+#     sentences = []
+#     li_mask_LH = []
+#     li_mask_RH = []
+#     li_mask_cntx = []
+#     li_targ = []
+#     li_targ_idx = []
+#     li_sent_len = []
+#     li_sent_pad = []
+#     li_score = []
+#     for i in range(df.shape[0]):
+#         sent = df.iloc[i][col_sentence]
+        
+#         targ = df.iloc[i][col_targ]
+#         score = df.iloc[i][col_score]
+#         try: 
+#             sent = sent.replace("<BOS>", "").replace(".", " .").replace(",", " ,").replace("!", " !").replace("?", " ?").replace("'s", " 's")
+#             sent_tok = text_to_word_sequence(sent, lower=False, filters=FILTERS)
+#             sent_pad = pad_sequences([sent_tok], maxlen=_maxlen, dtype='object', padding='post', value=[""])       
+#             targ_idx = np.where(targ==sent_pad[0])[0][0]
+#             if(~incld_targ):
+#                 sent_pad[0][targ_idx] = "<UNK>"
+
+#             mask_LH = [0]*(MAX_SEQ_LEN)
+#             mask_RH = [0]*(MAX_SEQ_LEN)
+#             for i in range(targ_idx):
+#                 mask_LH[i] = 1
+#             for i in range(targ_idx+1, len(sent_tok)):
+#                 mask_RH[i] = 1
+
+#             sent_len = len(sent_tok)
+
+#             li_targ.append(targ)
+#             li_score.append(score)
+            
+#             li_targ_idx.append(targ_idx)
+#             li_sent_len.append(sent_len)
+#             li_sent_pad.append(list(sent_pad)[0])
+#             li_mask_LH.append(mask_LH)
+#             li_mask_RH.append(mask_RH)
+#         except:
+#             _err_sent_idx.append(i)
+# #     sentences = [np.array(li_targ_idx), np.array(li_sent_len), np.array(li_sent_pad), np.array(li_targ)]
+# #     sentences = [np.array(li_targ_idx), np.array(li_sent_len), np.array(li_sent_pad)]
+#     sentences = [np.array(li_sent_len), np.array(li_sent_pad), # np.array(li_targ_idx),
+#                  np.array(li_mask_LH), np.array(li_mask_RH)] #, np.sum((li_mask_LH, li_mask_RH), axis=0)]
+#     if(incld_targ):
+#         return(sentences, li_targ, li_score)
+#     else:
+#         return(sentences, li_score)    

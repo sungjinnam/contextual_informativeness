@@ -57,8 +57,9 @@ from livelossplot.keras import PlotLossesCallback
 # custom layers from external files
 from layers.embeddings import BertLayer
 from layers.attention import AttentionLayer
-from models.build_models import build_model_bert, initialize_vars
+from models.build_models import *
 from models.train_models import *
+from utils.utils import *
 ```
 
 ```python
@@ -97,49 +98,13 @@ except:
 <!-- #endregion -->
 
 ```python
-# some constants
-RDM_SEED = 1
-K_FOLDS = 5
-MAX_SEQ_LEN = 30
-```
-
-```python
-
-```
-
-```python
-def proc_sentences(df, col_sentence, col_targ):
-    sentences = []
-    li_targ = []
-    li_sent = []
-    for i in range(df.shape[0]):
-        sent = df[col_sentence][i]
-        targ = None
-        if(col_targ):
-            targ = df[col_targ][i]
-        else:
-            targ = "[MASK]"
-        sent = sent.replace("______", targ)
-        li_targ.append(targ)
-        li_sent.append(sent)
-    sentences = [np.array(li_targ), np.array(li_sent)]
-    return(sentences)
-
-sentences = proc_sentences(df_cloze, 'sentence', 'targ')
-```
-
-```python
 # sentences_wttarg = proc_sentences(df_cloze, 'sentence', 'syn1')
 # sentences_notarg = proc_sentences(df_cloze, 'sentence', None)
-sentences = proc_sentences(df_cloze, 'sentence', 'targ')
+sentences = proc_sentences_dscovar(df_cloze, 'sentence', 'targ', 'bert')
 ```
 
 ```python
 sentences
-```
-
-```python
-
 ```
 
 ```python colab={} colab_type="code" id="IZUg96JlhwqB"
@@ -168,7 +133,7 @@ sns.pairplot(pd.DataFrame({"resp_lex":resp_lex,
 ```python
 tokenizer = create_tokenizer_from_hub_module()
 train_examples = convert_text_to_examples(sentences[0], sentences[1], resp_bws)
-tt = convert_examples_to_features(tokenizer, train_examples[:1], True, MAX_SEQ_LEN)
+tt = convert_examples_to_features(tokenizer, train_examples[:1], False, MAX_SEQ_LEN)
 tt[:4]
 ```
 
@@ -176,11 +141,29 @@ tt[:4]
 # BERT + Attention model
 <!-- #endregion -->
 
+## separate targ-cntx layers
+
 ```python
 K.clear_session()
 sess = tf.Session()
 
-model = build_model_bert(MAX_SEQ_LEN, attention_layer=True)
+model = build_model_bert(MAX_SEQ_LEN, finetune_emb=True, attention_layer=True, sep_cntx_targ=True)
+initialize_vars(sess)
+
+model.summary()
+```
+
+```python
+plot_model(model)
+```
+
+## Single targ-cntx layers
+
+```python
+K.clear_session()
+sess = tf.Session()
+
+model = build_model_bert(MAX_SEQ_LEN, finetune_emb=False, attention_layer=True, sep_cntx_targ=False)
 initialize_vars(sess)
 
 model.summary()
@@ -217,9 +200,6 @@ sent_len_cat.value_counts()
 ```
 
 ```python
-_num_iter = 15
-_batch_size = 64
-
 # fold settings
 gkf1 = GroupKFold(n_splits=K_FOLDS) ## target words
 gkf2 = GroupKFold(n_splits=len(Counter(targ_loc_cat))) ## target word locations
@@ -237,404 +217,47 @@ y = resp_bws
 y_type = 'bws'
 ```
 
-### including target word
+## w.o attention (no finetune BERT layer weights)
 
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_bertmod_cv(X, y, True,
-                 gkf_split, False,
-                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvTwrd", 
-                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
 
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_bertmod_cv(X, y, True,
-                 gkf_split, True,
-                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvTwrd", 
-                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
+### 1emb 
 
 ```python
 gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
 train_bertmod_cv(X, y, False,
-                 gkf_split, False,
-                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvTwrd",  
-                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
+                 gkf_split, False, False, False,
+                 "./model_weights/notune/bert/1emb/model_bert_notarg_noattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/notune/bert/1emb/preds_bert_notarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
 ```
+
+### 2emb 
+- not necessary if the model does not do finetuning of embedding layer(s)
+
+
+## /w attention (finetune BERT)
+
+
+### 1emb 
 
 ```python
 gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
 train_bertmod_cv(X, y, False,
-                 gkf_split, True,
-                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvTwrd",  
-                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
+                 gkf_split, True, True, False,
+                 "./model_weights/finetune/bert/1emb/model_bert_notarg_wtattn_lrlow_"+y_type+"_cvTwrd",  
+                 "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_lrlow_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
 ```
 
-## fold: target word locations
-
-
-### including target word
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_bertmod_cv(X, y, True,
-                 gkf_split, False,
-                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_bertmod_cv(X, y, True,
-                 gkf_split, True,
-                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_bertmod_cv(X, y, False,
-                 gkf_split, False,
-                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_bertmod_cv(X, y, False,
-                 gkf_split, True,
-                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-## fold: sent length
-
-
-### including target word
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_bertmod_cv(X, y, True,
-                 gkf_split, False,
-                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_bertmod_cv(X, y, True,
-                 gkf_split, True,
-                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_bertmod_cv(X, y, False,
-                 gkf_split, False,
-                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_bertmod_cv(X, y, False,
-                 gkf_split, True,
-                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-# Fitted to: Semantic distance
-
-
-## fold: target words
-
-```python
-X = sentences
-y = resp_brt
-y_type = 'brt'
-```
-
-### including target word
-
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_bertmod_cv(X, y, True,
-                 gkf_split, False,
-                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvTwrd", 
-                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_bertmod_cv(X, y, True,
-                 gkf_split, True,
-                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvTwrd", 
-                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
+### 2emb 
 
 ```python
 gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
 train_bertmod_cv(X, y, False,
-                 gkf_split, False,
-                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvTwrd",  
-                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_bertmod_cv(X, y, False,
-                 gkf_split, True,
-                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvTwrd",  
-                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-## fold: target word locations
-
-
-### including target word
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_bertmod_cv(X, y, True,
-                 gkf_split, False,
-                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_bertmod_cv(X, y, True,
-                 gkf_split, True,
-                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_bertmod_cv(X, y, False,
-                 gkf_split, False,
-                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_bertmod_cv(X, y, False,
-                 gkf_split, True,
-                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-## fold: sent length
-
-
-### including target word
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_bertmod_cv(X, y, True,
-                 gkf_split, False,
-                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_bertmod_cv(X, y, True,
-                 gkf_split, True,
-                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_bertmod_cv(X, y, False,
-                 gkf_split, False,
-                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_bertmod_cv(X, y, False,
-                 gkf_split, True,
-                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-# Fitted to: Lexical entropy
-
-
-## fold: target words
-
-```python
-X = sentences
-y = resp_lex
-y_type = 'lex'
-```
-
-## fold: sent length
-
-
-### including target word
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_bertmod_cv(X, y, True,
-                 gkf_split, False,
-                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_bertmod_cv(X, y, True,
-                 gkf_split, True,
-                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_bertmod_cv(X, y, False, 
-                 gkf_split, False,
-                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
-train_bertmod_cv(X, y, False,
-                 gkf_split, True,
-                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvSlen", 
-                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvSlen",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### including target word
-
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_bertmod_cv(X, y, True,
-                 gkf_split, False,
-                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvTwrd", 
-                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_bertmod_cv(X, y, True,
-                 gkf_split, True,
-                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvTwrd", 
-                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
-
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_bertmod_cv(X, y, False,
-                 gkf_split, False,
-                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvTwrd",  
-                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
-train_bertmod_cv(X, y, False,
-                 gkf_split, True,
-                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvTwrd",  
-                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvTwrd",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-## fold: target word locations
-
-
-### including target word
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_bertmod_cv(X, y, True,
-                 gkf_split, False,
-                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_bertmod_cv(X, y, True,
-                 gkf_split, True,
-                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-### target word as oov token
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_bertmod_cv(X, y, False,
-                 gkf_split, False,
-                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
-```
-
-```python
-gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
-train_bertmod_cv(X, y, False,
-                 gkf_split, True,
-                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvTloc", 
-                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvTloc",
-                 MAX_SEQ_LEN, _num_iter, _batch_size)
+                 gkf_split, True, True, True,
+                 "./model_weights/finetune/bert/2emb/model_bert_notarg_wtattn_lrlow_"+y_type+"_cvTwrd",  
+                 "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_lrlow_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
 ```
 
 ```python
@@ -642,46 +265,6 @@ train_bertmod_cv(X, y, False,
 ```
 
 # Classification performance 
-
-```python
-def roc_cv(cv_true_scores, pred_score_file_loc, score_type, cut, direction, fig, ax, col, ls):
-    tprs = []
-    aucs = []
-    mean_fpr = np.linspace(0, 1, 100)
-    pred_score_files = sorted(glob.glob(pred_score_file_loc))
-
-    for i in range(len(cv_true_scores)):
-        if(direction=="high"):
-            fpr, tpr, _ = roc_curve(cv_true_scores[i] > np.quantile(cv_true_scores[i], q=[cut]), np.load(pred_score_files[i]))
-        if(direction=="low"):
-            fpr, tpr, _ = roc_curve(cv_true_scores[i] < np.quantile(cv_true_scores[i], q=[cut]), 1-np.load(pred_score_files[i]))
-        tprs.append(interp(mean_fpr, fpr, tpr))
-        tprs[-1][0] = 0.0
-        roc_auc = auc(fpr, tpr)
-        aucs.append(roc_auc)
-        # sns.lineplot(fpr, tpr)
-        ax.plot(fpr, tpr, 
-                color=col, alpha=0.1,
-                # label = 'ROC fold %d (AUC=%0.2f, n=%d)' % (i, roc_auc, fold_set.shape[0])
-               )
-
-    mean_tpr = np.mean(tprs, axis=0)
-    mean_tpr[-1] = 1.0
-    mean_auc = auc(mean_fpr, mean_tpr)
-    std_auc = np.std(aucs)    
-    ax.plot(mean_fpr, mean_tpr, 
-             color=col, alpha=1, linestyle=ls,
-             label=r'Mean ROC:'+score_type+' (AUC = %0.2f $\pm$ %0.2f)' % (mean_auc, 1.96*std_auc),
-             lw=2)
-
-    ax.set_xlim([-0.05, 1.05])
-    ax.set_ylim([-0.05, 1.05])
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.set_title('ROC__'+str(cut)+"_"+str(direction)+'_5-fold')
-    # ax.legend(loc=4, bbox_to_anchor=(0.5, -0.2))
-    ax.legend()
-```
 
 ```python
 sraw_test_cvTwrd = []
@@ -770,22 +353,17 @@ sent_len_cat.value_counts()
 ```python
 fig, axes = plt.subplots(ncols=3, figsize=(24, 6))
 tt_col = sns.color_palette("colorblind", 6)
+# ./model_predict/notune/bert/1emb/preds_elmo_notarg_wtattn
 
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_bert_wttarg_noattn_bws_cvTwrd*", "bert_wttarg_noattn_bws_cvTwrd", 0.50, "high", fig, axes[0], tt_col[0], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_bert_wttarg_wtattn_bws_cvTwrd*", "bert_wttarg_wtattn_bws_cvTwrd", 0.50, "high", fig, axes[0], tt_col[1], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_bert_notarg_noattn_bws_cvTwrd*", "bert_notarg_noattn_bws_cvTwrd", 0.50, "high", fig, axes[0], tt_col[2], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_bert_notarg_wtattn_bws_cvTwrd*", "bert_notarg_wtattn_bws_cvTwrd", 0.50, "high", fig, axes[0], tt_col[3], '-')
 
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_bert_wttarg_noattn_bws_cvTwrd*", "bert_wttarg_noattn_bws_cvTwrd", 0.25, "high", fig, axes[1], tt_col[0], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_bert_wttarg_wtattn_bws_cvTwrd*", "bert_wttarg_wtattn_bws_cvTwrd", 0.25, "high", fig, axes[1], tt_col[1], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_bert_notarg_noattn_bws_cvTwrd*", "bert_notarg_noattn_bws_cvTwrd", 0.25, "high", fig, axes[1], tt_col[2], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_bert_notarg_wtattn_bws_cvTwrd*", "bert_notarg_wtattn_bws_cvTwrd", 0.25, "high", fig, axes[1], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/notune/bert/1emb/preds_bert_notarg_noattn_bws_cvTwrd*", "notune_1emb_bert_notarg_noattn_bws", 0.50, "high", fig, axes[0], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/notune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd*", "notune_1emb_bert_notarg_wtattn_bws", 0.50, "high", fig, axes[0], tt_col[3], '-')
 
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_bert_wttarg_noattn_bws_cvTwrd*", "bert_wttarg_noattn_bws_cvTwrd", 0.10, "high", fig, axes[2], tt_col[0], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_bert_wttarg_wtattn_bws_cvTwrd*", "bert_wttarg_wtattn_bws_cvTwrd", 0.10, "high", fig, axes[2], tt_col[1], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_bert_notarg_noattn_bws_cvTwrd*", "bert_notarg_noattn_bws_cvTwrd", 0.10, "high", fig, axes[2], tt_col[2], '-')
-roc_cv(resp_bws_cvTwrd, "./model_predict/preds_bert_notarg_wtattn_bws_cvTwrd*", "bert_notarg_wtattn_bws_cvTwrd", 0.10, "high", fig, axes[2], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_noattn_1emb_bws_cvTwrd*", "finetunebert_notarg_noattn_bws", 0.50, "high", fig, axes[0], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_1emb_bws_cvTwrd*", "finetunebert_notarg_wtattn_bws", 0.50, "high", fig, axes[0], tt_col[1], '-')
 
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_lrlow_bws_cvTwrd*", "finetune_1emb_bert_notarg_wtattn_lrlow_bws", 0.50, "high", fig, axes[0], tt_col[4], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_lrlow_bws_cvTwrd*", "finetune_2emb_bert_notarg_wtattn_lrlow_bws", 0.50, "high", fig, axes[0], tt_col[5], '-')
 ```
 
 ```python
@@ -1265,7 +843,7 @@ sns.scatterplot(notarg_noattn_pred_test, notarg_wtattn_pred_test, alpha=0.3)
 ### consolidating predictions from all cv folds
 
 ```python
-tt_files = sorted(glob.glob("./model_predict/preds_bert_notarg_wtattn_bws_cvTwrd*"))
+tt_files = sorted(glob.glob("./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr3e-05*"))
 tt_preds = [np.load(f) for f in tt_files]
 tt_preds = [x for xx in tt_preds for x in xx]
 tt_obs = sum(resp_bws_cvTwrd, [])
@@ -1576,6 +1154,446 @@ for i in range(len(tt_wttarg_attn)):
     axes[i][0].tick_params(axis='x', rotation=90)
     axes[i][1].tick_params(axis='x', rotation=90)
     
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
+```
+
+### including target word
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_bertmod_cv(X, y, True,
+                 gkf_split, False, True, 
+                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvTwrd", 
+                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_bertmod_cv(X, y, True,
+                 gkf_split, False, True, 
+                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvTwrd", 
+                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_bertmod_cv(X, y, False,
+                 gkf_split, True, False, False,
+                 "./model_weights/finetune/bert/1emb/model_bert_notarg_noattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/finetune/bert/1emb/preds_bert_notarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_bertmod_cv(X, y, False,
+                 gkf_split, True, True, True, 
+                 "./model_weights/finetune/bert/2emb/model_bert_notarg_wtattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+## fold: target word locations
+
+
+### including target word
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_bertmod_cv(X, y, True,
+                 gkf_split, False,
+                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_bertmod_cv(X, y, True,
+                 gkf_split, True,
+                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_bertmod_cv(X, y, False,
+                 gkf_split, False,
+                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_bertmod_cv(X, y, False,
+                 gkf_split, True,
+                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+## fold: sent length
+
+
+### including target word
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_bertmod_cv(X, y, True,
+                 gkf_split, False,
+                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_bertmod_cv(X, y, True,
+                 gkf_split, True,
+                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_bertmod_cv(X, y, False,
+                 gkf_split, False,
+                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_bertmod_cv(X, y, False,
+                 gkf_split, True,
+                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+# Fitted to: Semantic distance
+
+
+## fold: target words
+
+```python
+X = sentences
+y = resp_brt
+y_type = 'brt'
+```
+
+### including target word
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_bertmod_cv(X, y, True,
+                 gkf_split, False,
+                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvTwrd", 
+                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_bertmod_cv(X, y, True,
+                 gkf_split, True,
+                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvTwrd", 
+                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_bertmod_cv(X, y, False,
+                 gkf_split, False,
+                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_bertmod_cv(X, y, False,
+                 gkf_split, True,
+                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+## fold: target word locations
+
+
+### including target word
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_bertmod_cv(X, y, True,
+                 gkf_split, False,
+                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_bertmod_cv(X, y, True,
+                 gkf_split, True,
+                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_bertmod_cv(X, y, False,
+                 gkf_split, False,
+                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_bertmod_cv(X, y, False,
+                 gkf_split, True,
+                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+## fold: sent length
+
+
+### including target word
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_bertmod_cv(X, y, True,
+                 gkf_split, False,
+                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_bertmod_cv(X, y, True,
+                 gkf_split, True,
+                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_bertmod_cv(X, y, False,
+                 gkf_split, False,
+                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_bertmod_cv(X, y, False,
+                 gkf_split, True,
+                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+# Fitted to: Lexical entropy
+
+
+## fold: target words
+
+```python
+X = sentences
+y = resp_lex
+y_type = 'lex'
+```
+
+## fold: sent length
+
+
+### including target word
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_bertmod_cv(X, y, True,
+                 gkf_split, False,
+                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_bertmod_cv(X, y, True,
+                 gkf_split, True,
+                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_bertmod_cv(X, y, False, 
+                 gkf_split, False,
+                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf3.split(df_cloze['sentence'], groups=sent_len_cat)
+train_bertmod_cv(X, y, False,
+                 gkf_split, True,
+                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvSlen", 
+                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvSlen",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### including target word
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_bertmod_cv(X, y, True,
+                 gkf_split, False,
+                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvTwrd", 
+                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_bertmod_cv(X, y, True,
+                 gkf_split, True,
+                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvTwrd", 
+                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_bertmod_cv(X, y, False,
+                 gkf_split, False,
+                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
+train_bertmod_cv(X, y, False,
+                 gkf_split, True,
+                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvTwrd",  
+                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvTwrd",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+## fold: target word locations
+
+
+### including target word
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_bertmod_cv(X, y, True,
+                 gkf_split, False,
+                 "./model_weights/model_bert_wttarg_noattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_bert_wttarg_noattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_bertmod_cv(X, y, True,
+                 gkf_split, True,
+                 "./model_weights/model_bert_wttarg_wtattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_bert_wttarg_wtattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+### target word as oov token
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_bertmod_cv(X, y, False,
+                 gkf_split, False,
+                 "./model_weights/model_bert_notarg_noattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_bert_notarg_noattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
+```
+
+```python
+gkf_split = gkf2.split(df_cloze['sentence'], groups=targ_loc_cat)
+train_bertmod_cv(X, y, False,
+                 gkf_split, True,
+                 "./model_weights/model_bert_notarg_wtattn_"+y_type+"_cvTloc", 
+                 "./model_predict/preds_bert_notarg_wtattn_"+y_type+"_cvTloc",
+                 MAX_SEQ_LEN, NUM_ITER, BATCH_SIZE)
 ```
 
 ```python
