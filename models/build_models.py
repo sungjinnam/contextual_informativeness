@@ -3,7 +3,7 @@ from tensorflow.keras import layers, Model, regularizers, optimizers
 from tensorflow.keras import backend as K
 
 from layers.embeddings import ElmoLayer, BertLayer
-from layers.attention import AttentionLayer
+from layers.attention import AttentionLayer, AttentionMulMask
 import tensorflow as tf
 import numpy as np
 
@@ -31,8 +31,12 @@ def build_model_elmo(max_seq_len, finetune_emb, attention_layer, sep_cntx_targ=F
     cntx_targ = None
     if(attention_layer):
         ## context words to the target word
-        # cntx_targ = attention_block_mul(elmo_cntx, elmo_targ, input_sent_len, max_seq_len)
-        cntx_targ = attention_block_add(elmo_cntx, elmo_targ, max_seq_len)
+#         attn_layer = AttentionMulMask(name='attention_layer')        
+#         cntx_targ_sfmx, cntx_targ_wvec = attn_layer([elmo_cntx, elmo_targ, input_mask, input_tloc, max_seq_len])
+#         cntx_targ = layers.GlobalAveragePooling1D()(cntx_targ_wvec)        
+#         cntx_targ = layers.Lambda(lambda x: attention_block_mul)([elmo_cntx, elmo_targ, input_mask, input_tloc, max_seq_len])
+        cntx_targ = attention_block_mul(elmo_cntx, elmo_targ, input_mask, input_tloc, max_seq_len)
+        # cntx_targ = attention_block_add(elmo_cntx, elmo_targ, max_seq_len)
     else:
         cntx_targ = elmo_targ # updated target word (e.g., <UNK>) from ELMo's bidirectional process
 
@@ -112,7 +116,8 @@ def build_model_bert(max_seq_len, finetune_emb, attention_layer, sep_cntx_targ=F
     cntx_targ = None
     if(attention_layer):
         ## context words to the target word
-        cntx_targ = attention_block_add(bert_cntx, bert_targ, max_seq_len)
+        # cntx_targ = attention_block_add(bert_cntx, bert_targ, max_seq_len)
+        cntx_targ = attention_block_mul(bert_cntx, bert_targ, input_mask, input_tloc, max_seq_len)
     else:
         cntx_targ = bert_targ # updated target word (e.g., <UNK>) from BERT's process
     
@@ -175,23 +180,28 @@ def attention_block_add(in_vec_cntx, in_vec_targ, max_seq_len):
     att_out = layers.GlobalAveragePooling1D()(att_out)
     return(att_out)
 
-def attention_block_mul(in_vec_cntx, in_vec_targ, sent_len, max_seq_len):
+# global attention of context words in the sentence w.r.t. the target word
+def attention_block_mul(in_vec_cntx, in_vec_targ, mask_cntx, mask_targ, max_seq_len):
     tg_emb_repeat = layers.RepeatVector(max_seq_len, name='targ')(in_vec_targ)
-    att_fout = layers.Attention(name="attention_fout")([in_vec_cntx, in_vec_targ])
-    # att_fout = layers.Dense(1024)(att_fout)
-    # att_fout = att_fout(inputs=[in_vec_cntx, in_vec_targ], mask=[_mask,None])
+#     att_fout = layers.AdditiveAttention(name="attention_fout")(inputs=[in_vec_cntx, tg_emb_repeat], 
+#                                                        mask=[tf.cast(mask_cntx, tf.bool), tf.cast(mask_targ, tf.bool)])    
+    att_fout = layers.Attention(name="attention_fout")(inputs=[in_vec_cntx, tg_emb_repeat], 
+                                                       mask=[tf.cast(mask_cntx, tf.bool), tf.cast(mask_targ, tf.bool)])
+    att_sfmx = layers.Dense(max_seq_len, use_bias=False, activation='softmax', name="attention_sfmx")(att_fout)
 
-    # TODO: insert mask here
-    # TODO: no weights learned in tf.keras built in attention layers?
-    # sent_mask = layers.Lambda(lambda x:tf.concat([tf.ones(x[0]), tf.zeros(x[1]-x[0])], axis=0))([sent_len, max_seq_len])
-    # sent_mask = attn_mask
-    att_fout = layers.Lambda(lambda x:mul_mask(x[0], tf.cast(tf.range(max_seq_len)<x[1], tf.float32)), name="attention_fout_masked")([att_fout, sent_len])
-
-    # att_sfmx = layers.Dense(activation='softmax', name="attention_sfmx")(att_fout)
-    att_sfmx = layers.Dense(30, use_bias=False, activation='softmax', name="attention_sfmx")(att_fout)
-    # att_out = layers.Lambda(lambda x:tf.matmul(x[0], x[1]), name="attention_wvec")([att_fout, att_sfmx])
-    att_out = layers.multiply([att_fout, tf.transpose(att_sfmx)], name="attention_wvec")
-    att_out = layers.GlobalAveragePooling1D(name="attention_rout")(att_out)
+    # selecting the softmax result slice; the output shape should be::: shape=(?, 30, 1)
+    non_targ_idx = tf.where(tf.not_equal(mask_cntx, 0))[0,1]
+    att_sfmx = tf.expand_dims(att_sfmx[:, non_targ_idx, :], -1) 
+    
+    # masking the softmax output - attention weights for the context words are included only
+    att_sfmx = layers.Lambda(lambda x:tf.where(tf.cast(tf.expand_dims(x[0], -1), tf.bool), x[1], tf.zeros_like(x[1])), name="attention_sfmx_out")([mask_cntx, att_sfmx])
+    
+    # normalizing the attention weights
+    att_sfmx = layers.Lambda(lambda x:x/tf.expand_dims(tf.reduce_sum(x, axis=1), -1), name="attention_sfmx_nrm")(att_sfmx)
+    
+    # weighted sentence embedding vector 
+    att_out = layers.multiply([att_fout, att_sfmx], name="attention_wvec")
+    att_out = layers.GlobalAveragePooling1D(name="attention_out")(att_out)
     return(att_out)
     
 

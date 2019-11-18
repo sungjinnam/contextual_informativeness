@@ -14,6 +14,7 @@ from tensorflow.keras import backend as K
 # https://github.com/AlexYangLi/ABSA_Keras/blob/4392a52d08640b2b6c6aa586c4468f446fa6d2b7/models.py
 ELMO_PATH = 'https://tfhub.dev/google/elmo/2'
 BERT_PATH = "https://tfhub.dev/google/bert_cased_L-12_H-768_A-12/1"
+# BERT_PATH = "https://tfhub.dev/google/bert_cased_L-24_H-1024_A-16/1"
 
 class ElmoLayer(Layer):
     def __init__(self, **kwargs):
@@ -23,8 +24,9 @@ class ElmoLayer(Layer):
         
     def build(self, input_shape):
         self.elmo = hub.Module(ELMO_PATH, trainable=self.trainable, name="{}_module".format(self.name))
-        if(self.trainable):
-            self._trainable_weights += tf.trainable_variables(scope="^{}_module/.*".format(self.name))
+        if(self.trainable):            
+            # self._trainable_weights += tf.trainable_variables(scope="^{}_module/.*".format(self.name)) # finetuning aggregation weights only (4 parameters)
+            self._trainable_weights += [var for var in self.elmo.variables] # finetuning all weights (180M parameters)
         super(ElmoLayer, self).build(input_shape)
         
     def call(self, inputs):

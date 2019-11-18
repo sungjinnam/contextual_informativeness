@@ -47,11 +47,13 @@ def train_elmomod_cv(sentences, resp_scores, kf_split,
                  verbose=0, 
                  callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=False, leave_outer=True), 
                             plot_losses])
-        _mod.save_weights(model_weight_loc+"_cv"+str(_fold_idx)+".h5")
+        if(model_weight_loc):
+            _mod.save_weights(model_weight_loc+"_cv"+str(_fold_idx)+".tf")
 
         # prediction
         _pred_test = np.reshape(_mod.predict(_sent_test, batch_size=_batch_size), -1)    
-        np.save(model_pred_loc+"_cv"+str(_fold_idx)+".npy", _pred_test)
+        if(model_pred_loc):
+            np.save(model_pred_loc+"_cv"+str(_fold_idx)+".npy", _pred_test)
 
         _fold_idx += 1
 
@@ -78,7 +80,6 @@ def train_bertmod_cv(sentences, resp_scores, targ_incld,
         K.clear_session()
         sess = tf.Session()
 
-        print("fold:", _fold_idx)
         # preparing
         _mod = build_model_bert(max_seq_len, finetune_emb=_emb, attention_layer=_att, sep_cntx_targ=_sep, lr=_l_rate)
         initialize_vars(sess)
@@ -90,12 +91,14 @@ def train_bertmod_cv(sentences, resp_scores, targ_incld,
                  verbose=0, 
                  callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=False, leave_outer=True), 
                             plot_losses])
-        _mod.save_weights(model_weight_loc+"_cv"+str(_fold_idx)+".h5")
+        if(model_weight_loc):
+            _mod.save_weights(model_weight_loc+"_cv"+str(_fold_idx)+".tf")
 
         # prediction
         _pred_test = np.reshape(_mod.predict([_test_input_ids, _test_input_masks, _test_targ_locs, _test_segment_ids], 
                                              batch_size=_batch_size), -1)    
-        np.save(model_pred_loc+"_cv"+str(_fold_idx)+".npy", _pred_test)
+        if(model_pred_loc):
+            np.save(model_pred_loc+"_cv"+str(_fold_idx)+".npy", _pred_test)
 
         _fold_idx += 1  
 

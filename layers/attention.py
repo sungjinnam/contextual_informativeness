@@ -7,6 +7,7 @@ from tensorflow.keras.layers import Layer
 from tensorflow.keras import backend as K
 # from keras.engine import Layer
 # import keras.backend as K
+from tensorflow.keras import layers
 
 class AttentionLayer(Layer):
     """
@@ -124,3 +125,57 @@ class AttentionLayer(Layer):
             tf.TensorShape((input_shape[1][0], input_shape[1][1], input_shape[1][2])),
             tf.TensorShape((input_shape[1][0], input_shape[1][1], input_shape[0][1]))
         ]
+    
+    
+class AttentionMulMask(Layer):
+    # adding attention masks to tf.keras' attention layer
+    def __init__(self, **kwargs):
+        # self.output_dim = output_dim
+        super(AttentionMulMask, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # Create a trainable weight variable for this layer.
+#         self.kernel = self.add_weight(name='kernel', 
+#                                       shape=(input_shape[1], self.output_dim),
+#                                       initializer='uniform',
+#                                       trainable=True)
+        super(AttentionMulMask, self).build(input_shape)  # Be sure to call this at the end
+
+    def call(self, inputs):
+        in_vec_cntx, in_vec_targ, mask_cntx, mask_targ, max_seq_len = inputs
+            # global attention of context words in the sentence w.r.t. the target word
+        def attention_block_mul(in_vec_cntx, in_vec_targ, mask_cntx, mask_targ, max_seq_len):
+            tg_emb_repeat = layers.RepeatVector(max_seq_len, name='targ')(in_vec_targ)
+        #     att_fout = layers.AdditiveAttention(name="attention_fout")(inputs=[in_vec_cntx, tg_emb_repeat], 
+        #                                                        mask=[tf.cast(mask_cntx, tf.bool), tf.cast(mask_targ, tf.bool)])    
+            att_fout = layers.Attention(name="attention_fout")(inputs=[in_vec_cntx, tg_emb_repeat], 
+                                                               mask=[tf.cast(mask_cntx, tf.bool), tf.cast(mask_targ, tf.bool)])
+            att_sfmx = layers.Dense(max_seq_len, use_bias=False, activation='softmax', name="attention_sfmx")(att_fout)
+
+            # selecting the softmax result slice; the output shape should be::: shape=(?, 30, 1)
+            non_targ_idx = tf.where(tf.not_equal(mask_cntx, 0))[0][0]
+            att_sfmx = tf.expand_dims(att_sfmx[:, non_targ_idx, :], -1) 
+
+            # masking the softmax output - attention weights for the context words are included only
+            att_sfmx = layers.Lambda(lambda x:tf.where(tf.cast(tf.expand_dims(x[0], -1), tf.bool), x[1], tf.zeros_like(x[1])), name="attention_sfmx_out")([mask_cntx, att_sfmx])
+
+            # normalizing the attention weights
+            att_sfmx = layers.Lambda(lambda x:x/tf.expand_dims(tf.reduce_sum(x, axis=1), -1), name="attention_sfmx_nrm")(att_sfmx)
+
+            # weighted sentence embedding vector 
+            att_out = layers.multiply([att_fout, att_sfmx], name="attention_wvec")
+            # att_out = layers.GlobalAveragePooling1D(name="attention_out")(att_out)
+            return(att_sfmx, att_out)
+        
+        return(attention_block_mul(in_vec_cntx, in_vec_targ, mask_cntx, mask_targ, max_seq_len))
+
+    def compute_output_shape(self, input_shape):
+        return [
+            tf.TensorShape((input_shape[1][0], input_shape[1][1], input_shape[1][2])),
+            tf.TensorShape((input_shape[1][0], input_shape[1][1], input_shape[0][1]))
+        ]
+
+    
+    
+        
+    

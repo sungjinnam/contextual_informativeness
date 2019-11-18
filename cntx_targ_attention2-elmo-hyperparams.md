@@ -195,7 +195,7 @@ df_cloze.columns
 mm_scaler = MinMaxScaler()
 
 resp_scores = mm_scaler.fit_transform(df_cloze[['ent_cloze', 
-                                                'elmo_score', 'bert_score', 'glove_score',
+                                                'elmo_score', 'elmo_score', 'glove_score',
                                                 'scores_sum', 'sent_len']])
 resp_lex = resp_scores[:, 0]
 resp_lex = 1-resp_lex # reversing the direction: high score for high informative sentences
@@ -205,6 +205,10 @@ resp_brt = resp_scores[:, 2]
 resp_glv = resp_scores[:, 3]
 resp_bws = resp_scores[:, 4]
 sent_len = resp_scores[:, 5]
+```
+
+```python
+resp_bws
 ```
 
 ```python
@@ -236,6 +240,10 @@ model.summary()
 
 ```python
 plot_model(model)
+```
+
+```python
+# model.get_layer('elmo_sent_raw').get_weights()
 ```
 
 ## 2emb
@@ -306,8 +314,8 @@ y_type = 'bws'
 ## /w attention + finetune ELMo layer weights
 
 ```python
-NUM_ITER = [2,3,5]
-LEARNING_RATE = [1e-3, 1e-4, 1e-5]
+NUM_ITER = [2, 3, 5, 8]
+LEARNING_RATE = [1e-3, 1e-4, 5e-5, 3e-5, 1e-5]
 BATCH_SIZE = [16, 32]
 ```
 
@@ -324,12 +332,18 @@ for _l_rate in LEARNING_RATE:
             gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
             train_elmomod_cv(X_notarg, y,
                              gkf_split, True, True, False, 
-                             "./model_weights/finetune/elmo/1emb/model_elmo_notarg_wtattn_"+y_type+"_cvTwrd"+"_i"+str(_num_iter)+"_b"+str(_batch_size)+"_lr"+str(_l_rate),
+                             None, #"./model_weights/finetune/elmo/1emb/model_elmo_notarg_wtattn_"+y_type+"_cvTwrd"+"_i"+str(_num_iter)+"_b"+str(_batch_size)+"_lr"+str(_l_rate),
                              "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_"+y_type+"_cvTwrd"+"_i"+str(_num_iter)+"_b"+str(_batch_size)+"_lr"+str(_l_rate),
                              MAX_SEQ_LEN, _l_rate, _num_iter, _batch_size)
 ```
 
 ### 2emb 
+
+```python
+NUM_ITER = [2, 3, 5, 8]
+LEARNING_RATE = [1e-3, 1e-4, 5e-5, 3e-5, 1e-5]
+BATCH_SIZE = [16]  #32: OOM error? i.e., elmo
+```
 
 ```python
 for _l_rate in LEARNING_RATE:
@@ -338,7 +352,7 @@ for _l_rate in LEARNING_RATE:
             gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])    
             train_elmomod_cv(X_notarg, y,
                              gkf_split, True, True, True, 
-                             "./model_weights/finetune/elmo/2emb/model_elmo_notarg_wtattn_"+y_type+"_cvTwrd"+"_i"+str(_num_iter)+"_b"+str(_batch_size)+"_lr"+str(_l_rate),
+                             None, #"./model_weights/finetune/elmo/2emb/model_elmo_notarg_wtattn_"+y_type+"_cvTwrd"+"_i"+str(_num_iter)+"_b"+str(_batch_size)+"_lr"+str(_l_rate),
                              "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_"+y_type+"_cvTwrd"+"_i"+str(_num_iter)+"_b"+str(_batch_size)+"_lr"+str(_l_rate),
                              MAX_SEQ_LEN, _l_rate, _num_iter, _batch_size)
 ```
@@ -419,64 +433,274 @@ sent_len_cat.value_counts()
     - attention captures: the relationship between the target (known or unknown) and context
 
 ```python
-fig, axes = plt.subplots(ncols=6, figsize=(42, 6))
+# fig, axes = plt.subplots(ncols=3, nrows=4, figsize=(28, 18))
+# tt_col = sns.color_palette("colorblind", 6)
+
+# # iter: 8; batch: 2
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b2_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[0][0], tt_col[0], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b2_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[0][0], tt_col[1], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b2_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[0][0], tt_col[2], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b2_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[0][0], tt_col[3], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b2_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[0][0], tt_col[4], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b2_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[0][0], tt_col[5], '-')
+
+# # iter: 8; batch: 4
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b4_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[0][1], tt_col[0], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b4_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[0][1], tt_col[1], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b4_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[0][1], tt_col[2], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b4_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[0][1], tt_col[3], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b4_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[0][1], tt_col[4], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b4_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[0][1], tt_col[5], '-')
+
+# # iter: 8; batch: 8
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b8_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[0][2], tt_col[0], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b8_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[0][2], tt_col[1], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b8_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[0][2], tt_col[2], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b8_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[0][2], tt_col[3], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b8_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[0][2], tt_col[4], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b8_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[0][2], tt_col[5], '-')
+
+
+# # iter: 5; batch: 2
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b2_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[1][0], tt_col[0], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b2_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[1][0], tt_col[1], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b2_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[1][0], tt_col[2], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b2_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[1][0], tt_col[3], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b2_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[1][0], tt_col[4], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b2_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[1][0], tt_col[5], '-')
+
+# # iter: 5; batch: 4
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b4_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[1][1], tt_col[0], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b4_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[1][1], tt_col[1], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b4_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[1][1], tt_col[2], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b4_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[1][1], tt_col[3], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b4_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[1][1], tt_col[4], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b4_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[1][1], tt_col[5], '-')
+
+# # iter: 5; batch: 8
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b8_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[1][2], tt_col[0], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b8_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[1][2], tt_col[1], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b8_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[1][2], tt_col[2], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b8_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[1][2], tt_col[3], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b8_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[1][2], tt_col[4], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b8_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[1][2], tt_col[5], '-')
+
+# # iter: 3; batch: 2
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b2_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[2][0], tt_col[0], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b2_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[2][0], tt_col[1], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b2_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[2][0], tt_col[2], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b2_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[2][0], tt_col[3], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b2_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[2][0], tt_col[4], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b2_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[2][0], tt_col[5], '-')
+
+# # iter: 3; batch: 4
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b4_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[2][1], tt_col[0], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b4_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[2][1], tt_col[1], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b4_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[2][1], tt_col[2], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b4_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[2][1], tt_col[3], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b4_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[2][1], tt_col[4], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b4_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[2][1], tt_col[5], '-')
+
+# # iter: 3; batch: 8
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b8_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[2][2], tt_col[0], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b8_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[2][2], tt_col[1], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b8_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[2][2], tt_col[2], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b8_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[2][2], tt_col[3], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b8_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[2][2], tt_col[4], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b8_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[2][2], tt_col[5], '-')
+
+
+# # iter: 2; batch: 2
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b2_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[3][0], tt_col[0], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b2_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[3][0], tt_col[1], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b2_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[3][0], tt_col[2], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b2_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[3][0], tt_col[3], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b2_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[3][0], tt_col[4], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b2_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[3][0], tt_col[5], '-')
+
+# # iter: 2; batch: 4
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b4_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[3][1], tt_col[0], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b4_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[3][1], tt_col[1], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b4_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[3][1], tt_col[2], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b4_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[3][1], tt_col[3], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b4_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[3][1], tt_col[4], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b4_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[3][1], tt_col[5], '-')
+
+# # iter: 2; batch: 8
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b8_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[3][2], tt_col[0], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b8_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[3][2], tt_col[1], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b8_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[3][2], tt_col[2], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b8_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[3][2], tt_col[3], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b8_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[3][2], tt_col[4], '-')
+# roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b8_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[3][2], tt_col[5], '-')
+
+
+# axes[0][0].set_title("iter: 8; batch: 2")
+# axes[0][1].set_title("iter: 8; batch: 4")
+# axes[0][2].set_title("iter: 5; batch: 8")
+# axes[1][0].set_title("iter: 5; batch: 2")
+# axes[1][1].set_title("iter: 5; batch: 4")
+# axes[1][2].set_title("iter: 5; batch: 8")
+# axes[2][0].set_title("iter: 3; batch: 2")
+# axes[2][1].set_title("iter: 3; batch: 4")
+# axes[2][2].set_title("iter: 3; batch: 8")
+# axes[3][0].set_title("iter: 2; batch: 2")
+# axes[3][1].set_title("iter: 2; batch: 4")
+# axes[3][2].set_title("iter: 2; batch: 8")
+```
+
+```python
+fig, axes = plt.subplots(ncols=8, figsize=(56, 6))
 tt_col = sns.color_palette("colorblind", 6)
 
-# iter: 5; batch: 32
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b32_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[0], tt_col[0], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b32_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[0], tt_col[1], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b32_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[0], tt_col[2], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b32_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[0], tt_col[3], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b32_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[0], tt_col[4], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b32_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[0], tt_col[5], '-')
+# iter: 8; batch: 16
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b16_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[0], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b16_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[0], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b16_lr5e-05*",  "elmo_notarg_wtattn_bws_1emb_lr5e-05", 0.50, "high", fig, axes[0], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b16_lr3e-05*",  "elmo_notarg_wtattn_bws_1emb_lr3e-05", 0.50, "high", fig, axes[0], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[0], tt_col[4], '-')
+
+# iter: 8; batch: 16
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b16_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[1], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b16_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[1], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b16_lr5e-05*",  "elmo_notarg_wtattn_bws_2emb_lr5e-05", 0.50, "high", fig, axes[1], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b16_lr3e-05*",  "elmo_notarg_wtattn_bws_2emb_lr3e-05", 0.50, "high", fig, axes[1], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i8_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[1], tt_col[4], '-')
+
 
 # iter: 5; batch: 16
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b16_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[1], tt_col[0], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b16_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[1], tt_col[1], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[1], tt_col[2], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b16_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[1], tt_col[3], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b16_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[1], tt_col[4], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[1], tt_col[5], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b16_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[2], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b16_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[2], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b16_lr5e-05*",  "elmo_notarg_wtattn_bws_1emb_lr5e-05", 0.50, "high", fig, axes[2], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b16_lr3e-05*",  "elmo_notarg_wtattn_bws_1emb_lr3e-05", 0.50, "high", fig, axes[2], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i5_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[2], tt_col[4], '-')
 
-# iter: 3; batch: 32
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b32_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[2], tt_col[0], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b32_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[2], tt_col[1], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b32_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[2], tt_col[2], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b32_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[2], tt_col[3], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b32_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[2], tt_col[4], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b32_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[2], tt_col[5], '-')
+# iter: 5; batch: 16
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[3], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[3], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr5e-05*",  "elmo_notarg_wtattn_bws_2emb_lr5e-05", 0.50, "high", fig, axes[3], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr3e-05*",  "elmo_notarg_wtattn_bws_2emb_lr3e-05", 0.50, "high", fig, axes[3], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[3], tt_col[4], '-')
+
+# iter: 3: batch: 16
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[4], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[4], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr5e-05*",  "elmo_notarg_wtattn_bws_1emb_lr5e-05", 0.50, "high", fig, axes[4], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr3e-05*",  "elmo_notarg_wtattn_bws_1emb_lr3e-05", 0.50, "high", fig, axes[4], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[4], tt_col[4], '-')
 
 # iter: 3; batch: 16
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[3], tt_col[0], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[3], tt_col[1], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[3], tt_col[2], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[3], tt_col[3], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[3], tt_col[4], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[3], tt_col[5], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[5], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[5], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr5e-05*",  "elmo_notarg_wtattn_bws_2emb_lr5e-05", 0.50, "high", fig, axes[5], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr3e-05*",  "elmo_notarg_wtattn_bws_2emb_lr3e-05", 0.50, "high", fig, axes[5], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i3_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[5], tt_col[4], '-')
 
-# iter: 2; batch: 32
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b32_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[4], tt_col[0], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b32_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[4], tt_col[1], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b32_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[4], tt_col[2], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b32_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[4], tt_col[3], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b32_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[4], tt_col[4], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b32_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[4], tt_col[5], '-')
+# iter: 2: batch: 16
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[6], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[6], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr5e-05*",  "elmo_notarg_wtattn_bws_1emb_lr5e-05", 0.50, "high", fig, axes[6], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr3e-05*",  "elmo_notarg_wtattn_bws_1emb_lr3e-05", 0.50, "high", fig, axes[6], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[6], tt_col[4], '-')
 
 # iter: 2; batch: 16
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.001*",  "elmo_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[5], tt_col[0], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.0001*", "elmo_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[5], tt_col[1], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/1emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[5], tt_col[2], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[5], tt_col[3], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[5], tt_col[4], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[5], tt_col[5], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.001*",  "elmo_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[7], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.0001*", "elmo_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[7], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr5e-05*",  "elmo_notarg_wtattn_bws_2emb_lr5e-05", 0.50, "high", fig, axes[7], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr3e-05*",  "elmo_notarg_wtattn_bws_2emb_lr3e-05", 0.50, "high", fig, axes[7], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/elmo/2emb/preds_elmo_notarg_wtattn_bws_cvTwrd_i2_b16_lr1e-05*",  "elmo_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[7], tt_col[4], '-')
+
+axes[0].set_title("iter: 8; batch: 16")
+axes[1].set_title("iter: 8; batch: 16")
+axes[2].set_title("iter: 5; batch: 16")
+axes[3].set_title("iter: 5; batch: 16")
+axes[4].set_title("iter: 3; batch: 16")
+axes[5].set_title("iter: 3; batch: 16")
+axes[6].set_title("iter: 2; batch: 16")
+axes[7].set_title("iter: 2; batch: 16")
+```
+
+```python
+
+```
+
+<!-- #region {"colab_type": "text", "id": "l4rgsjFnxP3U", "toc-hr-collapsed": false} -->
+# Train the full model with selected hyperparameters
+<!-- #endregion -->
+
+- 1emb model
+    - lr: 1e-4
+    - epochs: 5
+    - batch size: 16
+- 2emb model
+    - lr: 1e-4
+    - epochs: 8
+    - batch size: 16
+    
 
 
-axes[0].set_title("iter: 5; batch: 32")
-axes[1].set_title("iter: 5; batch: 16")
-axes[2].set_title("iter: 3; batch: 32")
-axes[3].set_title("iter: 3; batch: 16")
-axes[4].set_title("iter: 2; batch: 16")
-axes[5].set_title("iter: 2; batch: 16")
+## 1emb
+
+```python
+K.clear_session()
+sess = tf.Session()
+
+model = build_model_elmo(MAX_SEQ_LEN, finetune_emb=True, attention_layer=True, sep_cntx_targ=False, lr=1e-4)
+initialize_vars(sess)
+```
+
+```python
+model.fit(x=sentences_notarg, y=resp_bws, 
+         epochs=5, batch_size=16, 
+         validation_split=0.10, shuffle=True,
+         verbose=0, 
+         callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=True, leave_outer=True)])
+```
+
+```python
+model.save_weights("./model_weights/finetune/elmo/1emb/model_elmo_notarg_wtattn_bws_full_i5_b16_lr1e-04.tf")
+```
+
+```python
+model.load_weights("./model_weights/finetune/elmo/1emb/model_elmo_notarg_wtattn_bws_full_i5_b16_lr1e-04.tf")
+```
+
+```python
+# model.get_layer("elmo_sent_raw").get_weights()
+```
+
+## 2emb
+
+```python
+K.clear_session()
+sess = tf.Session()
+
+model = build_model_elmo(MAX_SEQ_LEN, finetune_emb=True, attention_layer=True, sep_cntx_targ=True, lr=1e-4)
+initialize_vars(sess)
+```
+
+```python
+model.fit(x=sentences_notarg, y=resp_bws, 
+         epochs=8, batch_size=16, 
+         validation_split=0.10, shuffle=True,
+         verbose=0, 
+         callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=True, leave_outer=True)])
+```
+
+```python
+model.save_weights("./model_weights/finetune/elmo/2emb/model_elmo_notarg_wtattn_bws_full_i8_b16_lr1e-04.tf")
+```
+
+```python
+
+```
+
+```python
+
+```
+
+```python
+
 ```
 
 ```python

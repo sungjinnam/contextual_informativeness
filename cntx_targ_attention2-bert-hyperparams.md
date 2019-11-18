@@ -220,7 +220,7 @@ y_type = 'bws'
 ## /w attention (finetune BERT)
 
 ```python
-NUM_ITER = [2,3,5]
+NUM_ITER = [2,3,5,8]
 LEARNING_RATE = [1e-3, 1e-4, 5e-5, 3e-5, 1e-5]
 BATCH_SIZE = [16, 32]
 ```
@@ -238,7 +238,7 @@ for _l_rate in LEARNING_RATE:
             gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
             train_bertmod_cv(X, y, False,
                              gkf_split, True, True, False, 
-                             "./model_weights/finetune/bert/1emb/model_bert_notarg_wtattn_"+y_type+"_cvTwrd"+"_i"+str(_num_iter)+"_b"+str(_batch_size)+"_lr"+str(_l_rate),
+                             None, # "./model_weights/finetune/bert/1emb/model_bert_notarg_wtattn_"+y_type+"_cvTwrd"+"_i"+str(_num_iter)+"_b"+str(_batch_size)+"_lr"+str(_l_rate),
                              "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_"+y_type+"_cvTwrd"+"_i"+str(_num_iter)+"_b"+str(_batch_size)+"_lr"+str(_l_rate),
                              MAX_SEQ_LEN, _l_rate, _num_iter, _batch_size)
 ```
@@ -246,8 +246,8 @@ for _l_rate in LEARNING_RATE:
 ### 2emb 
 
 ```python
-NUM_ITER = [2,3,5]
-LEARNING_RATE = [5e-5, 3e-5, 1e-5]
+NUM_ITER = [2,3,5,8]
+LEARNING_RATE = [1e-3, 1e-4, 5e-5, 3e-5, 1e-5]
 BATCH_SIZE = [16] #32: OOM error
 ```
 
@@ -258,7 +258,7 @@ for _l_rate in LEARNING_RATE:
             gkf_split = gkf1.split(df_cloze['sentence'], groups=df_cloze['targ'])
             train_bertmod_cv(X, y, False,
                              gkf_split, True, True, True, 
-                             "./model_weights/finetune/bert/2emb/model_bert_notarg_wtattn_"+y_type+"_cvTwrd"+"_i"+str(_num_iter)+"_b"+str(_batch_size)+"_lr"+str(_l_rate),
+                             None, # "./model_weights/finetune/bert/2emb/model_bert_notarg_wtattn_"+y_type+"_cvTwrd"+"_i"+str(_num_iter)+"_b"+str(_batch_size)+"_lr"+str(_l_rate),
                              "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_"+y_type+"_cvTwrd"+"_i"+str(_num_iter)+"_b"+str(_batch_size)+"_lr"+str(_l_rate),
                              MAX_SEQ_LEN, _l_rate, _num_iter, _batch_size)
 ```
@@ -354,57 +354,138 @@ sent_len_cat.value_counts()
     - attention captures: the relationship between the target (known or unknown) and context
 
 ```python
-fig, axes = plt.subplots(ncols=6, figsize=(42, 6))
+fig, axes = plt.subplots(ncols=8, figsize=(56, 6))
 tt_col = sns.color_palette("colorblind", 6)
 
-# iter: 5; batch: 16
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i5_b16_lr0.001*",  "bert_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[0], tt_col[0], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i5_b16_lr0.0001*", "bert_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[0], tt_col[1], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i5_b16_lr5e-05*",  "bert_notarg_wtattn_bws_1emb_lr5e-05", 0.50, "high", fig, axes[0], tt_col[2], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i5_b16_lr3e-05*",  "bert_notarg_wtattn_bws_1emb_lr3e-05", 0.50, "high", fig, axes[0], tt_col[3], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i5_b16_lr1e-05*",  "bert_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[0], tt_col[4], '-')
+# iter: 8; batch: 16
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i8_b16_lr0.001*",  "bert_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[0], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i8_b16_lr0.0001*", "bert_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[0], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i8_b16_lr5e-05*",  "bert_notarg_wtattn_bws_1emb_lr5e-05", 0.50, "high", fig, axes[0], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i8_b16_lr3e-05*",  "bert_notarg_wtattn_bws_1emb_lr3e-05", 0.50, "high", fig, axes[0], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i8_b16_lr1e-05*",  "bert_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[0], tt_col[4], '-')
+
+# iter: 8; batch: 16
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i8_b16_lr0.001*",  "bert_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[1], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i8_b16_lr0.0001*", "bert_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[1], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i8_b16_lr5e-05*",  "bert_notarg_wtattn_bws_2emb_lr5e-05", 0.50, "high", fig, axes[1], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i8_b16_lr3e-05*",  "bert_notarg_wtattn_bws_2emb_lr3e-05", 0.50, "high", fig, axes[1], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i8_b16_lr1e-05*",  "bert_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[1], tt_col[4], '-')
+
 
 # iter: 5; batch: 16
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.001*",  "bert_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[1], tt_col[0], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.0001*", "bert_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[1], tt_col[1], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr5e-05*",  "bert_notarg_wtattn_bws_2emb_lr5e-05", 0.50, "high", fig, axes[1], tt_col[2], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr3e-05*",  "bert_notarg_wtattn_bws_2emb_lr3e-05", 0.50, "high", fig, axes[1], tt_col[3], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr1e-05*",  "bert_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[1], tt_col[4], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i5_b16_lr0.001*",  "bert_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[2], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i5_b16_lr0.0001*", "bert_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[2], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i5_b16_lr5e-05*",  "bert_notarg_wtattn_bws_1emb_lr5e-05", 0.50, "high", fig, axes[2], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i5_b16_lr3e-05*",  "bert_notarg_wtattn_bws_1emb_lr3e-05", 0.50, "high", fig, axes[2], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i5_b16_lr1e-05*",  "bert_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[2], tt_col[4], '-')
 
-# iter: 3: batch: 16
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.001*",  "bert_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[2], tt_col[0], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.0001*", "bert_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[2], tt_col[1], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr5e-05*",  "bert_notarg_wtattn_bws_1emb_lr5e-05", 0.50, "high", fig, axes[2], tt_col[2], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr3e-05*",  "bert_notarg_wtattn_bws_1emb_lr3e-05", 0.50, "high", fig, axes[2], tt_col[3], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr1e-05*",  "bert_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[2], tt_col[4], '-')
-
-# iter: 3; batch: 16
+# iter: 5; batch: 16
 roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.001*",  "bert_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[3], tt_col[0], '-')
 roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.0001*", "bert_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[3], tt_col[1], '-')
 roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr5e-05*",  "bert_notarg_wtattn_bws_2emb_lr5e-05", 0.50, "high", fig, axes[3], tt_col[2], '-')
 roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr3e-05*",  "bert_notarg_wtattn_bws_2emb_lr3e-05", 0.50, "high", fig, axes[3], tt_col[3], '-')
 roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr1e-05*",  "bert_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[3], tt_col[4], '-')
 
+# iter: 3: batch: 16
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.001*",  "bert_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[4], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.0001*", "bert_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[4], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr5e-05*",  "bert_notarg_wtattn_bws_1emb_lr5e-05", 0.50, "high", fig, axes[4], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr3e-05*",  "bert_notarg_wtattn_bws_1emb_lr3e-05", 0.50, "high", fig, axes[4], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr1e-05*",  "bert_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[4], tt_col[4], '-')
+
+# iter: 3; batch: 16
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.001*",  "bert_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[5], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr0.0001*", "bert_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[5], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr5e-05*",  "bert_notarg_wtattn_bws_2emb_lr5e-05", 0.50, "high", fig, axes[5], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr3e-05*",  "bert_notarg_wtattn_bws_2emb_lr3e-05", 0.50, "high", fig, axes[5], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i3_b16_lr1e-05*",  "bert_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[5], tt_col[4], '-')
+
 # iter: 2: batch: 16
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.001*",  "bert_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[4], tt_col[0], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.0001*", "bert_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[4], tt_col[1], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr5e-05*",  "bert_notarg_wtattn_bws_1emb_lr5e-05", 0.50, "high", fig, axes[4], tt_col[2], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr3e-05*",  "bert_notarg_wtattn_bws_1emb_lr3e-05", 0.50, "high", fig, axes[4], tt_col[3], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr1e-05*",  "bert_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[4], tt_col[4], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.001*",  "bert_notarg_wtattn_bws_1emb_lr1e-03", 0.50, "high", fig, axes[6], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.0001*", "bert_notarg_wtattn_bws_1emb_lr1e-04", 0.50, "high", fig, axes[6], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr5e-05*",  "bert_notarg_wtattn_bws_1emb_lr5e-05", 0.50, "high", fig, axes[6], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr3e-05*",  "bert_notarg_wtattn_bws_1emb_lr3e-05", 0.50, "high", fig, axes[6], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/1emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr1e-05*",  "bert_notarg_wtattn_bws_1emb_lr1e-05", 0.50, "high", fig, axes[6], tt_col[4], '-')
 
 # iter: 2; batch: 16
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.001*",  "bert_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[5], tt_col[0], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.0001*", "bert_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[5], tt_col[1], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr5e-05*",  "bert_notarg_wtattn_bws_2emb_lr5e-05", 0.50, "high", fig, axes[5], tt_col[2], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr3e-05*",  "bert_notarg_wtattn_bws_2emb_lr3e-05", 0.50, "high", fig, axes[5], tt_col[3], '-')
-roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr1e-05*",  "bert_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[5], tt_col[4], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.001*",  "bert_notarg_wtattn_bws_2emb_lr1e-03", 0.50, "high", fig, axes[7], tt_col[0], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr0.0001*", "bert_notarg_wtattn_bws_2emb_lr1e-04", 0.50, "high", fig, axes[7], tt_col[1], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr5e-05*",  "bert_notarg_wtattn_bws_2emb_lr5e-05", 0.50, "high", fig, axes[7], tt_col[2], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr3e-05*",  "bert_notarg_wtattn_bws_2emb_lr3e-05", 0.50, "high", fig, axes[7], tt_col[3], '-')
+roc_cv_plot(resp_bws_cvTwrd, "./model_predict/finetune/bert/2emb/preds_bert_notarg_wtattn_bws_cvTwrd_i2_b16_lr1e-05*",  "bert_notarg_wtattn_bws_2emb_lr1e-05", 0.50, "high", fig, axes[7], tt_col[4], '-')
 
-axes[0].set_title("iter: 5; batch: 16")
-axes[1].set_title("iter: 5; batch: 16")
-axes[2].set_title("iter: 3; batch: 16")
-axes[3].set_title("iter: 3; batch: 16")
-axes[4].set_title("iter: 2; batch: 16")
-axes[5].set_title("iter: 2; batch: 16")
+axes[0].set_title("iter: 8; batch: 16")
+axes[1].set_title("iter: 8; batch: 16")
+axes[2].set_title("iter: 5; batch: 16")
+axes[3].set_title("iter: 5; batch: 16")
+axes[4].set_title("iter: 3; batch: 16")
+axes[5].set_title("iter: 3; batch: 16")
+axes[6].set_title("iter: 2; batch: 16")
+axes[7].set_title("iter: 2; batch: 16")
+```
+
+<!-- #region {"colab_type": "text", "id": "l4rgsjFnxP3U", "toc-hr-collapsed": false} -->
+# Train the full model with selected hyperparameters
+<!-- #endregion -->
+
+- 1emb model
+    - lr: 3e-5
+    - epochs: 8
+    - batch size: 16
+- 2emb model
+    - lr: 1e-5
+    - epochs: 8
+    - batch size: 16
+    
+
+```python
+tokenizer = create_tokenizer_from_hub_module()
+ful_examples = convert_text_to_examples(sentences[0], sentences[1], resp_bws)
+full_input_ids, full_input_masks, full_targ_locs, full_segment_ids, full_scores = convert_examples_to_features(tokenizer, train_examples, False, MAX_SEQ_LEN)
+```
+
+## 1emb
+
+```python
+K.clear_session()
+sess = tf.Session()
+
+model = build_model_bert(MAX_SEQ_LEN, finetune_emb=True, attention_layer=True, sep_cntx_targ=False, lr=3e-5)
+initialize_vars(sess)
+```
+
+```python
+model.fit(x=[full_input_ids, full_input_masks, full_targ_locs, full_segment_ids], y=full_scores, 
+         epochs=8, batch_size=16, 
+         validation_split=0.10, shuffle=True,
+         verbose=0, 
+         callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=True, leave_outer=True)])
+```
+
+```python
+model.save_weights("./model_weights/finetune/bert/1emb/model_bert_notarg_wtattn_bws_full_i8_b16_lr3e-05.tf")
+```
+
+## 2emb
+
+```python
+K.clear_session()
+sess = tf.Session()
+
+model = build_model_bert(MAX_SEQ_LEN, finetune_emb=True, attention_layer=True, sep_cntx_targ=True, lr=1e-5)
+initialize_vars(sess)
+```
+
+```python
+model.fit(x=[full_input_ids, full_input_masks, full_targ_locs, full_segment_ids], y=full_scores, 
+         epochs=8, batch_size=16, 
+         validation_split=0.10, shuffle=True,
+         verbose=0, 
+         callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=True, leave_outer=True)])
+```
+
+```python
+model.save_weights("./model_weights/finetune/bert/2emb/model_bert_notarg_wtattn_bws_full_i8_b16_lr1e-05.tf")
 ```
 
 ```python
