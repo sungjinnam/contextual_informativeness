@@ -3,3 +3,5 @@ dataset/*
 .ipynb_checkpoints/
 model_*
 *.pyc
+model.png
+test*
