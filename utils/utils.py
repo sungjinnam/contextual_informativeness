@@ -2,6 +2,7 @@ import numpy as np
 import glob
 from sklearn.metrics import roc_curve, auc
 from scipy import interp
+from scipy import stats
 from keras.preprocessing.text import text_to_word_sequence
 from keras.preprocessing.sequence import pad_sequences
 
@@ -9,17 +10,28 @@ FILTERS = '"#$%&()*+/:;=@[\\]^_`{|}~\t\n'
 RELATIONAL_CUE_TOKENS = {
     'IsA': ['kind'], 
     'Antonym': ['opposite'], 
-    'Synonym': ['same', 'meaning'], 
+    'Synonym': ['same'], 
     'PartOf': ['part'], 
     'MemberOf': ['member'], 
     'MadeOf': ['made'], 
-    'Entails': ['also', 'true'], 
+    'Entails': ['true'], #['also', 'true'], 
     'HasA': ['have', 'contain'], 
     'HasProperty': ['characterized']  #'specify' - typo in the paper?
 }
 
+def rmse(y_true, y_pred):
+    return np.sqrt(np.mean(np.square(np.array(y_pred) - np.array(y_true)), axis=-1))
 
-def roc_cv(cv_true_scores, pred_score_file_loc, score_type, cut, direction):
+def rocauc(y_true, y_pred, cut, direction="high"):
+    if(direction=="high"):
+        fpr, tpr, _ = roc_curve(y_true > np.quantile(y_true, q=[cut]), y_pred)
+    if(direction=="low"):
+        fpr, tpr, _ = roc_curve(y_true < np.quantile(y_true, q=[cut]), y_pred)
+
+    roc_auc = auc(fpr, tpr)
+    return (roc_auc)
+
+def roc_cv(cv_true_scores, pred_score_file_loc, score_type, cut, direction, fig, ax, col, ls):
     tprs = []
     aucs = []
     mean_fpr = np.linspace(0, 1, 100)
@@ -43,35 +55,7 @@ def roc_cv(cv_true_scores, pred_score_file_loc, score_type, cut, direction):
     mean_tpr = np.mean(tprs, axis=0)
     mean_tpr[-1] = 1.0
     mean_auc = auc(mean_fpr, mean_tpr)
-    std_auc = np.std(aucs)
-    return(mean_fpr, mean_tpr, mean_auc, str_auc)
-
-def roc_cv_plot(cv_true_scores, pred_score_file_loc, score_type, cut, direction, fig, ax, col, ls):
-    tprs = []
-    aucs = []
-    mean_fpr = np.linspace(0, 1, 100)
-    pred_score_files = sorted(glob.glob(pred_score_file_loc))
-
-    for i in range(len(cv_true_scores)):
-        if(direction=="high"):
-            fpr, tpr, _ = roc_curve(cv_true_scores[i] > np.quantile(cv_true_scores[i], q=[cut]), np.load(pred_score_files[i]))
-        if(direction=="low"):
-            fpr, tpr, _ = roc_curve(cv_true_scores[i] < np.quantile(cv_true_scores[i], q=[cut]), 1-np.load(pred_score_files[i]))
-        tprs.append(interp(mean_fpr, fpr, tpr))
-        tprs[-1][0] = 0.0
-        roc_auc = auc(fpr, tpr)
-        aucs.append(roc_auc)
-        # sns.lineplot(fpr, tpr)
-        ax.plot(fpr, tpr, 
-                color=col, alpha=0.1,
-                # label = 'ROC fold %d (AUC=%0.2f, n=%d)' % (i, roc_auc, fold_set.shape[0])
-               )
-
-    mean_tpr = np.mean(tprs, axis=0)
-    mean_tpr[-1] = 1.0
-    mean_auc = auc(mean_fpr, mean_tpr)
-    std_auc = np.std(aucs) 
-#     mean_fpr, mean_tpr, mean_auc, str_auc = roc_cv(cv_true_scores, pred_score_file_loc, score_type, cut, direction)
+    std_auc = np.std(aucs)    
     ax.plot(mean_fpr, mean_tpr, 
              color=col, alpha=1, linestyle=ls,
              label=r'Mean ROC:'+score_type+' (AUC = %0.2f $\pm$ %0.2f)' % (mean_auc, 1.96*std_auc),
@@ -86,16 +70,16 @@ def roc_cv_plot(cv_true_scores, pred_score_file_loc, score_type, cut, direction,
     ax.legend()
 
 
-def proc_sentences_dscovar(df, col_sentence, col_targ, mod_type):
+def proc_sentences_dscovar(df, col_sentence, col_targ, mod_type, max_seq_len):
     if(mod_type=='bert'):
         sentences = []
         li_targ = []
         li_sent = []
         for i in range(df.shape[0]):
-            sent = df.iloc[i][col_sentence]
+            sent = df[col_sentence][i]
             targ = None
             if(col_targ):
-                targ = df.iloc[i][col_targ]
+                targ = df[col_targ][i]
             else:
                 targ = "[MASK]"
             sent = sent.replace("______", targ)
@@ -122,12 +106,12 @@ def proc_sentences_dscovar(df, col_sentence, col_targ, mod_type):
             sent = sent.replace("______", targ)
             sent = sent.replace("<BOS>", "").replace(".", " .").replace(",", " ,").replace("!", " !").replace(",?", " ?").replace("'s", " 's")
             sent_tok = text_to_word_sequence(sent, lower=False, filters=FILTERS)
-            sent_pad = pad_sequences([sent_tok], maxlen=MAX_SEQ_LEN, dtype='object', padding='post', value=[""])       
+            sent_pad = pad_sequences([sent_tok], maxlen=max_seq_len, dtype='object', padding='post', value=[""])       
             targ_idx = np.where(targ==sent_pad[0])[0][0]
 
-            mask_targ = [0]*(MAX_SEQ_LEN)
+            mask_targ = [0]*(max_seq_len)
             mask_targ[targ_idx] = 1
-            mask_cntx = [0]*(MAX_SEQ_LEN)
+            mask_cntx = [0]*(max_seq_len)
             for i in range(targ_idx):
                 mask_cntx[i] = 1
             if(col_targ):
@@ -228,16 +212,19 @@ def matching_tok_idx(sent_tok, comp_tok):
 def split_and_lower(x):
     return([xx.lower() for xx in x.split('_')])
 
-def attention_ranks(_attn_weights, cntx_mask, comp_mask):
-    attn_weights = _attn_weights * cntx_mask
+# def attention_ranks_dummy(sent_len, comp_mask):
+    
+
+def attention_ranks(_attn_weights, sent_len, comp_mask):
+    attn_weights = _attn_weights[:sent_len]
     attn_weights_rank = np.argsort(attn_weights)[::-1]
     comp_idx = np.where(comp_mask)[0]
     ret = np.array([np.where(x==attn_weights_rank)[0][0] for x in comp_idx])
     return(ret)
 
-def attention_scores(attn_weights, sent_len, cntx_mask, pair_mask, rcue_mask):
-    rank_pair = attention_ranks(attn_weights, cntx_mask, pair_mask)
-    rank_rcue = attention_ranks(attn_weights, cntx_mask, rcue_mask)
+def attention_scores(attn_weights, sent_len, pair_mask, rcue_mask):
+    rank_pair = attention_ranks(attn_weights, sent_len, pair_mask)
+    rank_rcue = attention_ranks(attn_weights, sent_len, rcue_mask)
     score_pair = ((sent_len-rank_pair)/sent_len).mean()
     score_rcue = ((sent_len-rank_rcue)/sent_len).mean()
     return(np.array([score_pair, score_rcue]))
@@ -245,17 +232,18 @@ def attention_scores(attn_weights, sent_len, cntx_mask, pair_mask, rcue_mask):
 
 def min_max_sc(_x): 
     x = np.array(_x)
-    x_min = x[~(x==0)].min()
-    x_ret = []
-    for xx in x:
-        if(xx==0):
-            x_ret.append(0)
-        else:
-            x_ret.append((xx-x_min)/(x.max()-x_min))
-    return(x_ret)
-    # x_min = x.min()
-    # return (x-x_min)/(x.max()-x_min)
+    return (x-x.min())/(x.max()-x.min())
 
+def ci(vec, confidence=0.95, digits=None):
+    # https://stackoverflow.com/questions/15033511/compute-a-confidence-interval-from-sample-data
+    a = 1.0 * np.array(vec)
+    n = len(a)
+    m, se = np.mean(a), stats.sem(a)
+    h = se * stats.t.ppf((1 + confidence) / 2., n-1)
+    if(digits):
+        return round(m, digits), round(m-h, digits), round(m+h, digits)
+    else:
+        return m, m-h, m+h
 
 
 # # MAX_SEQ_LEN = 30

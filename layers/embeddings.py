@@ -25,12 +25,11 @@ class ElmoLayer(Layer):
     def build(self, input_shape):
         self.elmo = hub.Module(ELMO_PATH, trainable=self.trainable, name="{}_module".format(self.name))
         if(self.trainable):            
-            # self._trainable_weights += tf.trainable_variables(scope="^{}_module/.*".format(self.name)) # finetuning aggregation weights only (4 parameters)
-            self._trainable_weights += [var for var in self.elmo.variables] # finetuning all weights (180M parameters)
+            self._trainable_weights += tf.trainable_variables(scope="^{}_module/.*".format(self.name)) # finetuning aggregation weights only (4 parameters)
+            # self._trainable_weights += [var for var in self.elmo.variables] # finetuning all weights (180M parameters)
         super(ElmoLayer, self).build(input_shape)
         
     def call(self, inputs):
-        print(self.dimensions)
         input_len, input_tok = inputs
         input_len = K.squeeze(K.cast(input_len, tf.int32), axis=1)
         input_tok = input_tok
@@ -56,7 +55,7 @@ class ElmoLayer(Layer):
 # ===== BERT layers using tf.hub =====
 # reference: https://github.com/strongio/keras-bert/blob/master/keras-bert.ipynb
 class BertLayer(tf.keras.layers.Layer):
-    def __init__(self, n_fine_tune_layers=10, pooling='first', bert_path=BERT_PATH, **kwargs,):
+    def __init__(self, n_fine_tune_layers=3, pooling='first', bert_path=BERT_PATH, **kwargs,):
         self.n_fine_tune_layers = n_fine_tune_layers
         self.trainable = True   # trainability will be controlled in the model building process
         self.output_size = 768
@@ -71,38 +70,25 @@ class BertLayer(tf.keras.layers.Layer):
         self.bert = hub.Module(self.bert_path, trainable=self.trainable, name=f"{self.name}_module")
         
         if(self.trainable):
-#             self._trainable_weights += tf.trainable_variables(scope="^{}_module/.*".format(self.name))
+            trainable_vars = self.bert.variables
             if self.pooling == "first":
                 self._trainable_weights += [var for var in self.bert.variables if not "/cls/" in var.name]
             elif self.pooling == "seq":
-                self._trainable_weights += [var for var in self.bert.variables if not "/cls/" in var.name and not "/pooler/" in var.name]
+#                 self._trainable_weights += [var for var in self.bert.variables if not "/cls/" in var.name and not "/pooler/" in var.name]
+                trainable_vars = [var for var in self.bert.variables if not "/cls/" in var.name and not "/pooler/" in var.name]
+                trainable_layers = []
+            
+            for i in range(self.n_fine_tune_layers):
+                trainable_layers.append(f"encoder/layer_{str(11 - i)}")                
+            trainable_vars = [var for var in trainable_vars if any([l in var.name for l in trainable_layers])]
 
+            # Add to trainable weights
+            for var in trainable_vars:
+                self._trainable_weights.append(var)
 
-#             # remove unused layers
-#             trainable_vars = self.bert.variables
-#             if self.pooling == "first":
-#                 trainable_vars = [var for var in trainable_vars if not "/cls/" in var.name]
-#                 trainable_layers = ["pooler/dense"]
-
-#             elif self.pooling == "seq":
-#                 trainable_vars = [var for var in trainable_vars if not "/cls/" in var.name and not "/pooler/" in var.name]
-#                 trainable_layers = []
-#             else:
-#                 raise NameError(f"Undefined pooling type (must be either first or mean, but is {self.pooling}")        
-#             # select how many layers to fine tune
-#             for i in range(self.n_fine_tune_layers):
-#                 trainable_layers.append(f"encoder/layer_{str(11 - i)}")
-
-#             # Update trainable vars to contain only the specified layers
-#             trainable_vars = [var for var in trainable_vars if any([l in var.name for l in trainable_layers])]        
-
-#             # Add to trainable weights
-#             for var in trainable_vars:
-#                 self._trainable_weights.append(var)
-
-#             for var in self.bert.variables:
-#                 if var not in self._trainable_weights:
-#                     self._non_trainable_weights.append(var)
+            for var in self.bert.variables:
+                if var not in self._trainable_weights:
+                    self._non_trainable_weights.append(var)
                 
         super(BertLayer, self).build(input_shape)
         

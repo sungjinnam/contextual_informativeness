@@ -9,6 +9,7 @@ from bert.tokenization import FullTokenizer
 import keras_tqdm
 from tqdm import tqdm_notebook
 from livelossplot.keras import PlotLossesCallback
+import gc
 
 NUM_ITER = 10
 BATCH_SIZE = 16
@@ -16,46 +17,80 @@ RDM_SEED = 1
 K_FOLDS = 5
 MAX_SEQ_LEN = 30
 
+def train_validate(sess, 
+                    max_seq_len, _emb, _att, _sep, _l_rate, 
+                    _sent_train, _resp_train, _num_iter, _batch_size):
+    # preparing
+    _mod = build_model_elmo(max_seq_len, finetune_emb=_emb, attention_layer=_att, sep_cntx_targ=_sep, lr=_l_rate)
+    initialize_vars(sess)
+
+    # training
+    result = _mod.fit(x=_sent_train, y=_resp_train, 
+                        epochs=_num_iter, batch_size=_batch_size, 
+                        # validation_split=0.10, shuffle=True,
+                        verbose=0) 
+                        # callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=False, leave_outer=False)])
+    return result, _mod
+
 def train_elmomod_cv(sentences, resp_scores, kf_split, 
                      _emb, _att, _sep,
                      model_weight_loc, model_pred_loc,
                      max_seq_len, _l_rate, _num_iter, _batch_size):
     _fold_idx = 0
-    plot_losses = PlotLossesCallback()
+    # plot_losses = PlotLossesCallback()
 #     checkpoint = ModelCheckpoint(model_weight_loc+str(_fold_idx)+".h5", 
 #                                  monitor='val_loss', verbose=0, save_best_only=True, mode='auto')
 
-    
-    for train_idx, test_idx in kf_split:
+    train_res = []
+    # mods = []
+    test_evals = []
+    test_trues = []
+
+    for train_idx, test_idx in tqdm_notebook(kf_split, desc='cvfold'):
         K.clear_session()
         sess = tf.Session()
 
-        print("fold:", _fold_idx)
-        # preparing
-        _mod = build_model_elmo(max_seq_len, finetune_emb=_emb, attention_layer=_att, sep_cntx_targ=_sep, lr=_l_rate)
-        initialize_vars(sess)
+        # print("fold:", _fold_idx)
 
         _sent_train = [sent[train_idx] for sent in sentences]
         _sent_test  = [sent[test_idx] for sent in sentences]
         _resp_train  = [resp_scores[i] for i in train_idx]
         _resp_test   = [resp_scores[i] for i in test_idx]
 
-        # training
-        _mod.fit(x=_sent_train, y=_resp_train, 
-                 epochs=_num_iter, batch_size=_batch_size, 
-                 validation_split=0.10, shuffle=True,
-                 verbose=0, 
-                 callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=False, leave_outer=True), 
-                            plot_losses])
-        if(model_weight_loc):
-            _mod.save_weights(model_weight_loc+"_cv"+str(_fold_idx)+".tf")
+        # # preparing
+        # _mod = build_model_elmo(max_seq_len, finetune_emb=_emb, attention_layer=_att, sep_cntx_targ=_sep, lr=_l_rate)
+        # initialize_vars(sess)
 
-        # prediction
-        _pred_test = np.reshape(_mod.predict(_sent_test, batch_size=_batch_size), -1)    
-        if(model_pred_loc):
-            np.save(model_pred_loc+"_cv"+str(_fold_idx)+".npy", _pred_test)
+        # # training
+        # _mod.fit(x=_sent_train, y=_resp_train, 
+        #          epochs=_num_iter, batch_size=_batch_size, 
+        #          validation_split=0.10, shuffle=True,
+        #          verbose=0, 
+        #          callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=False, leave_outer=True), 
+        #                     plot_losses])
+        _result, _mod = train_validate(sess,
+                                        max_seq_len, _emb, _att, _sep, _l_rate, 
+                                        _sent_train, _resp_train,
+                                        _num_iter, _batch_size)
+        _test_eval = np.reshape(_mod.predict(_sent_test, batch_size=_batch_size), -1)
+        # mods.append(_mod)
+        train_res.append(_result)
+        test_evals.append(_test_eval)
+        test_trues.append(_resp_test)
+
+        # if(model_weight_loc):
+        #     _mod.save_weights(model_weight_loc+"_cv"+str(_fold_idx)+".tf")
+
+        # # prediction
+        # if(model_pred_loc):
+        #     np.save(model_pred_loc+"_cv"+str(_fold_idx)+".npy", _pred_test)
 
         _fold_idx += 1
+        
+        gc.collect()
+        del _mod
+
+    return {'train_res':train_res, 'test_evals':test_evals, 'test_trues':test_trues}
 
 
 def train_bertmod_cv(sentences, resp_scores, targ_incld, 
@@ -63,9 +98,14 @@ def train_bertmod_cv(sentences, resp_scores, targ_incld,
                      model_weight_loc, model_pred_loc,
                      max_seq_len, _l_rate, _num_iter, _batch_size):
     _fold_idx = 0
-    plot_losses = PlotLossesCallback()
+#     plot_losses = PlotLossesCallback()
     
-    for train_idx, test_idx in kf_split:
+    train_res = []
+    # mods = []
+    test_evals = []
+    test_trues = []
+    
+    for train_idx, test_idx in tqdm_notebook(kf_split, desc='cvfold'):
         _sent_train = [sent[train_idx] for sent in sentences]
         _sent_test  = [sent[test_idx] for sent in sentences]
         _resp_train  = [resp_scores[i] for i in train_idx]
@@ -85,24 +125,35 @@ def train_bertmod_cv(sentences, resp_scores, targ_incld,
         initialize_vars(sess)
         
         # training
-        _mod.fit(x=[_train_input_ids, _train_input_masks, _train_targ_locs, _train_segment_ids], y=_train_scores, 
+        _result=_mod.fit(x=[_train_input_ids, _train_input_masks, _train_segment_ids, _train_targ_locs], y=_train_scores, 
                  epochs=_num_iter, batch_size=_batch_size, 
-                 validation_split=0.10, shuffle=True,
-                 verbose=0, 
-                 callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=False, leave_outer=True), 
-                            plot_losses])
+#                  validation_split=0.10, shuffle=True,
+                 verbose=0)
+#                  callbacks=[keras_tqdm.TQDMNotebookCallback(leave_inner=False, leave_outer=True), 
+#                             plot_losses])
         if(model_weight_loc):
             _mod.save_weights(model_weight_loc+"_cv"+str(_fold_idx)+".tf")
 
         # prediction
-        _pred_test = np.reshape(_mod.predict([_test_input_ids, _test_input_masks, _test_targ_locs, _test_segment_ids], 
+        _test_eval = np.reshape(_mod.predict([_test_input_ids, _test_input_masks, _test_segment_ids, _test_targ_locs], 
                                              batch_size=_batch_size), -1)    
+        
+        train_res.append(_result)
+        test_evals.append(_test_eval)
+        test_trues.append(_test_scores)
+
+        
         if(model_pred_loc):
-            np.save(model_pred_loc+"_cv"+str(_fold_idx)+".npy", _pred_test)
+            np.save(model_pred_loc+"_cv"+str(_fold_idx)+".npy", _test_eval)
+            np.save(model_pred_loc+"_cv"+str(_fold_idx)+"_trues.npy", _test_scores)
 
         _fold_idx += 1  
 
-    return None
+        gc.collect()
+        del _mod
+
+    return {'train_res':train_res, 'test_evals':test_evals, 'test_trues':test_trues}
+#     return None
         
         
 class PaddingInputExample(object):
@@ -171,12 +222,12 @@ def convert_single_example(tokenizer, example, targ_incld=False, max_seq_length=
     
     tokens_sent = []
     segment_ids = []
-#     tokens_sent.append("[CLS]") # useful for sentence classification task
-#     segment_ids.append(0)       # segment_id for [CLS] token
+#     tokens_sent.append("[CLS]") # useful for sentence classification task - id 100
+#     segment_ids.append()       # segment_id for [CLS] token
     for token in tokens_a:
         tokens_sent.append(token)
         segment_ids.append(0)
-#     tokens_sent.append("[SEP]") # useful for sentence classification & multisentence task
+#     tokens_sent.append("[SEP]") # useful for sentence classification & multisentence task - id 102
 #     segment_ids.append(0)       # segment_id for [SEP] token
     
     targ_ids = tokenizer.convert_tokens_to_ids(tokens_targ)
@@ -208,13 +259,14 @@ def convert_single_example(tokenizer, example, targ_incld=False, max_seq_length=
     assert len(targ_locs) == max_seq_length
     assert len(segment_ids) == max_seq_length
     
-    return input_ids, input_mask, segment_ids, targ_locs, example.score
+    return input_ids, input_mask, segment_ids, targ_locs , example.score
 
 
 def convert_examples_to_features(tokenizer, examples, targ_incld=False, max_seq_length=256):
     # converts a *set* of `InputExample`s to a list of `InputFeatures`
     input_ids, input_masks, segment_ids, targ_locs, scores = [], [], [], [], []
-    for example in tqdm_notebook(examples, desc="Converting examples to features"):
+#     for example in tqdm_notebook(examples, desc="Converting examples to features"):
+    for example in examples:        
         try: 
             input_id, input_mask, segment_id, targ_loc, score = convert_single_example(tokenizer, example, targ_incld, max_seq_length)
             input_ids.append(input_id)

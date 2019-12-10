@@ -13,6 +13,9 @@ mul_mask = lambda x, m: x * tf.expand_dims(m, axis=-1)
 # global learning rate parameter
 LEARNING_RATE = 3e-5    #keras default: 0.001
 
+def rmse_keras(y_true, y_pred):
+	return K.sqrt(K.mean(K.square(y_pred - y_true), axis=-1))
+
 # ===== ELMo model =====
 # references:
 # https://github.com/strongio/keras-elmo/blob/master/Elmo%20Keras.ipynb
@@ -36,6 +39,8 @@ def build_model_elmo(max_seq_len, finetune_emb, attention_layer, sep_cntx_targ=F
 #         cntx_targ = layers.GlobalAveragePooling1D()(cntx_targ_wvec)        
 #         cntx_targ = layers.Lambda(lambda x: attention_block_mul)([elmo_cntx, elmo_targ, input_mask, input_tloc, max_seq_len])
         cntx_targ = attention_block_mul(elmo_cntx, elmo_targ, input_mask, input_tloc, max_seq_len)
+        # cntx_targ = layers.Lambda(lambda x: attention_block_mul(x[0], x[1], x[2], x[3], x[4]))([elmo_cntx, elmo_targ, input_mask, input_tloc, max_seq_len])
+
         # cntx_targ = attention_block_add(elmo_cntx, elmo_targ, max_seq_len)
     else:
         cntx_targ = elmo_targ # updated target word (e.g., <UNK>) from ELMo's bidirectional process
@@ -55,56 +60,57 @@ def build_model_elmo(max_seq_len, finetune_emb, attention_layer, sep_cntx_targ=F
             model.get_layer("elmo_sent_raw").trainable=False
 
     adam = optimizers.Adam(lr=lr)
-    model.compile(loss='mean_absolute_error', optimizer=adam)
+    model.compile(loss=rmse_keras, optimizer=adam)
 #     model.compile(loss='mean_absolute_error', optimizer="adam")
 
 
     return model
 
 
-def build_model_elmo_kapelner(max_seq_len, attention_layer):
+def build_model_elmo_kapelner(max_seq_len, max_lex_len, finetune_emb, attention_layer, sep_cntx_targ=False, lr=LEARNING_RATE):
     # inputs
     input_sent_len = layers.Input((1,), name='input_sent_len', dtype="int32")
     input_sentence = layers.Input((max_seq_len,), name='input_sentence', dtype="string")
     input_mask = layers.Input((max_seq_len,), name='input_mask', dtype="int32")
     input_tloc = layers.Input((max_seq_len,), name='input_tloc', dtype="int32") 
     
-    input_lexf = layers.Input((30,), name="input_lexf", dtype="float32")
+    input_lexf = layers.Input((max_lex_len,), name="input_lexf", dtype="float32")
     
-    elmo_input = [input_sent_len, input_sentence]
     # fetch ELMo embeddings
-    elmo_sent = ElmoLayer(trainable=True, name="elmo_sent")(elmo_input)
-    elmo_cntx = layers.Lambda(lambda x: mul_mask(x[0], tf.cast(x[1], tf.float32)), name="elmo_cntx")([elmo_sent, input_mask])
-    elmo_targ = layers.Lambda(lambda x: tf.reduce_sum(mul_mask(x[0], tf.cast(x[1], tf.float32)), axis=1), name="elmo_targ")([elmo_sent, input_tloc])
+    elmo_cntx, elmo_targ = elmo_embed(input_sent_len, input_sentence, input_mask, input_tloc, sep_cntx_targ=sep_cntx_targ)
 
     cntx_targ = None
     if(attention_layer):
-        ## context words to the target word
-        tg_emb_repeat = layers.RepeatVector(max_seq_len, name='targ')(elmo_targ)
-        attn_layer = AttentionLayer(name='attention_layer')        
-        att_out, attn_states = attn_layer([elmo_cntx, tg_emb_repeat], verbose=False)
-        
-        att_out = layers.GlobalAveragePooling1D()(att_out)
-        cntx_targ = att_out
+        cntx_targ = attention_block_mul(elmo_cntx, elmo_targ, input_mask, input_tloc, max_seq_len)
     else:
         cntx_targ = elmo_targ # updated target word (e.g., <UNK>) from ELMo's bidirectional process
 
     # final regression output MLP
     cntx_targ_feat = layers.concatenate([cntx_targ, input_lexf])
-    output = layers.Dense(256, activation='relu')(cntx_targ_feat)
-    output = layers.Dense(1, activation='linear')(output) #, kernel_regularizer=regularizers.l2(np.exp(0.1)))(mem)
+    output = regression_block(cntx_targ_feat)
+
 
     # model compile
-    model = Model([input_sent_len, input_sentence, input_mask, input_tloc, input_lexf], output)
-    # adam = optimizers.Adam(lr=0.0001)
-    model.compile(loss='mean_absolute_error', optimizer='adam')
+    model = Model([input_sent_len, input_sentence, input_mask, input_tloc, input_lexf], output)   # adam = optimizers.Adam(lr=0.0001)
+    
+    # Keras bug: manually setting the trainability of embedding layer(s)
+    if(not finetune_emb):
+        if(sep_cntx_targ):
+            model.get_layer("elmo_cntx_raw").trainable=False
+            model.get_layer("elmo_targ_raw").trainable=False
+        else:
+            model.get_layer("elmo_sent_raw").trainable=False
+
+    adam = optimizers.Adam(lr=lr)
+    model.compile(loss=rmse_keras, optimizer=adam)
+#     model.compile(loss='mean_absolute_error', optimizer="adam")
+
 
     return model
 
 
 # ===== BERT model =====
 # reference: https://github.com/strongio/keras-bert/blob/master/keras-bert.ipynb
-# enabling the finetuning hurts the performance of dscovar sentences (e.g., rocauc .78 vs .5)
 def build_model_bert(max_seq_len, finetune_emb, attention_layer, sep_cntx_targ=False, lr=LEARNING_RATE):
     input_id = layers.Input(shape=(max_seq_len), name="input_ids")
     input_mask = layers.Input(shape=(max_seq_len), name="input_masks")
@@ -136,9 +142,56 @@ def build_model_bert(max_seq_len, finetune_emb, attention_layer, sep_cntx_targ=F
             model.get_layer("bert_sent_raw").trainable=False
     
     adam = optimizers.Adam(lr=lr)
-    model.compile(loss='mean_absolute_error', optimizer=adam)
+    model.compile(loss=rmse_keras, optimizer=adam)
 
     return model
+
+
+def build_model_bert_kapelner(max_seq_len, max_lex_len, finetune_emb, attention_layer, sep_cntx_targ=False, lr=LEARNING_RATE):
+    input_id = layers.Input(shape=(max_seq_len), name="input_ids")
+    input_mask = layers.Input(shape=(max_seq_len), name="input_masks")
+    input_segment = layers.Input(shape=(max_seq_len), name="segment_ids")
+    input_tloc = layers.Input(shape=(max_seq_len), name="input_tloc")    
+    input_lexf = layers.Input((max_lex_len,), name="input_lexf", dtype="float32")
+
+    
+    bert_cntx, bert_targ = bert_embed(input_id, input_mask, input_segment, input_tloc, sep_cntx_targ=sep_cntx_targ)
+
+    cntx_targ = None
+    if(attention_layer):
+        ## context words to the target word
+        # cntx_targ = attention_block_add(bert_cntx, bert_targ, max_seq_len)
+        cntx_targ = attention_block_mul(bert_cntx, bert_targ, input_mask, input_tloc, max_seq_len)
+    else:
+        cntx_targ = bert_targ # updated target word (e.g., <UNK>) from BERT's process
+    
+    # final regression output MLP
+    cntx_targ_feat = layers.concatenate([cntx_targ, input_lexf])
+    output = regression_block(cntx_targ_feat)
+
+    # model compile
+    model = Model([input_id, input_mask, 
+                   input_segment, input_tloc, 
+                   input_lexf], output)
+
+    # Keras bug: manually setting the trainability of embedding layer(s)
+    if(not finetune_emb):
+        if(sep_cntx_targ):
+            model.get_layer("bert_cntx_raw").trainable=False
+            model.get_layer("bert_targ_raw").trainable=False
+        else:
+            model.get_layer("bert_sent_raw").trainable=False
+    
+    adam = optimizers.Adam(lr=lr)
+    model.compile(loss=rmse_keras, optimizer=adam)
+
+    return model
+
+
+
+
+
+
 
 
 def elmo_embed(input_sent_len, input_sentence, input_mask, input_tloc, sep_cntx_targ=False):   
@@ -166,7 +219,7 @@ def bert_embed(input_id, input_mask, input_segment, input_tloc, sep_cntx_targ=Fa
         bert_cntx = layers.Lambda(lambda x:               mul_mask(x[0], tf.cast(x[1], tf.float32)),          name="bert_cntx")([bert_cntx, input_mask])
         bert_targ = layers.Lambda(lambda x: tf.reduce_sum(mul_mask(x[0], tf.cast(x[1], tf.float32)), axis=1), name="bert_targ")([bert_targ, input_tloc])
     else:
-        bert_sent = BertLayer(pooling="seq", name="bert_sent_raw")([input_id, input_mask, input_segment])
+        bert_sent = BertLayer(n_fine_tune_layers=1, pooling="seq", name="bert_sent_raw")([input_id, input_mask, input_segment])
         bert_cntx = layers.Lambda(lambda x:               mul_mask(x[0], tf.cast(x[1], tf.float32)),          name="bert_cntx")([bert_sent, input_mask])
         bert_targ = layers.Lambda(lambda x: tf.reduce_sum(mul_mask(x[0], tf.cast(x[1], tf.float32)), axis=1), name="bert_targ")([bert_sent, input_tloc])
     return(bert_cntx, bert_targ)
@@ -181,12 +234,18 @@ def attention_block_add(in_vec_cntx, in_vec_targ, max_seq_len):
     return(att_out)
 
 # global attention of context words in the sentence w.r.t. the target word
-def attention_block_mul(in_vec_cntx, in_vec_targ, mask_cntx, mask_targ, max_seq_len):
+def attention_block_mul(in_vec_cntx, in_vec_targ, mask_cntx, mask_targ, max_seq_len, att_type="mul"):
     tg_emb_repeat = layers.RepeatVector(max_seq_len, name='targ')(in_vec_targ)
 #     att_fout = layers.AdditiveAttention(name="attention_fout")(inputs=[in_vec_cntx, tg_emb_repeat], 
 #                                                        mask=[tf.cast(mask_cntx, tf.bool), tf.cast(mask_targ, tf.bool)])    
-    att_fout = layers.Attention(name="attention_fout")(inputs=[in_vec_cntx, tg_emb_repeat], 
-                                                       mask=[tf.cast(mask_cntx, tf.bool), tf.cast(mask_targ, tf.bool)])
+    att_fout = None
+    if(att_type=="mul"):
+        att_fout = layers.Attention(name="attention_fout")(inputs=[in_vec_cntx, tg_emb_repeat], 
+                                                        mask=[tf.cast(mask_cntx, tf.bool), tf.cast(mask_targ, tf.bool)])
+    if(att_type=="add"):
+        att_fout = layers.AdditiveAttention(name="attention_fout")(inputs=[in_vec_cntx, tg_emb_repeat], 
+                                                        mask=[tf.cast(mask_cntx, tf.bool), tf.cast(mask_targ, tf.bool)])
+
     att_sfmx = layers.Dense(max_seq_len, use_bias=False, activation='softmax', name="attention_sfmx")(att_fout)
 
     # selecting the softmax result slice; the output shape should be::: shape=(?, 30, 1)
