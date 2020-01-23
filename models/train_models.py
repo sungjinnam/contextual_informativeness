@@ -266,7 +266,7 @@ def convert_examples_to_features(tokenizer, examples, targ_incld=False, max_seq_
     # converts a *set* of `InputExample`s to a list of `InputFeatures`
     input_ids, input_masks, segment_ids, targ_locs, scores = [], [], [], [], []
 #     for example in tqdm_notebook(examples, desc="Converting examples to features"):
-    for example in examples:        
+    for i, example in enumerate(examples):
         try: 
             input_id, input_mask, segment_id, targ_loc, score = convert_single_example(tokenizer, example, targ_incld, max_seq_length)
             input_ids.append(input_id)
@@ -275,7 +275,7 @@ def convert_examples_to_features(tokenizer, examples, targ_incld=False, max_seq_
             targ_locs.append(targ_loc)        
             scores.append(score)
         except:
-            print(example)
+            print(i)
     
     return(np.array(input_ids), np.array(input_masks), np.array(segment_ids), np.array(targ_locs), np.array(scores).reshape(-1, 1))
         
