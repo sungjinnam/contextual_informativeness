@@ -114,8 +114,8 @@ def train_bertmod_cv(sentences, resp_scores, targ_incld,
         _tokenizer = create_tokenizer_from_hub_module()
         _train_examples = convert_text_to_examples(_sent_train[0], _sent_train[1], _resp_train)
         _test_examples  = convert_text_to_examples(_sent_test[0],  _sent_test[1],  _resp_test)
-        (_train_input_ids, _train_input_masks, _train_targ_locs, _train_segment_ids, _train_scores) = convert_examples_to_features(_tokenizer, _train_examples, targ_incld, max_seq_len)
-        (_test_input_ids,  _test_input_masks, _test_targ_locs, _test_segment_ids,  _test_scores)  = convert_examples_to_features(_tokenizer, _test_examples, targ_incld, max_seq_len)
+        (_train_input_ids, _train_input_masks, _train_segment_ids, _train_targ_locs, _train_scores) = convert_examples_to_features(_tokenizer, _train_examples, targ_incld, max_seq_len)
+        (_test_input_ids,  _test_input_masks, _test_segment_ids,  _test_targ_locs, _test_scores)  = convert_examples_to_features(_tokenizer, _test_examples, targ_incld, max_seq_len)
         
         K.clear_session()
         sess = tf.Session()
