@@ -1,5 +1,6 @@
 # Introduction
-- The repository includes Jupyter notebook files for *Attention-based Learning Models for Predicting Contextual Informativeness* paper. 
+- The repository includes Jupyter notebook files and datasets for [An Attention-Based Model for Predicting Contextual Informativeness and Curriculum Learning Applications](https://arxiv.org/abs/2204.09885). 
+To cite the work and dataset, please use the linked paper.
 
 # Installing dependencies
 Using Conda:

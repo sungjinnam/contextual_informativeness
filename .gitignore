@@ -1,7 +1,8 @@
 ___*
-dataset/*
+dataset/others
 .ipynb_checkpoints/
 model_*
 *.pyc
 model.png
 test*
+.DS_Store
