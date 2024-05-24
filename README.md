@@ -1,7 +1,8 @@
 # Introduction
-The repository includes Jupyter notebook files and datasets for 
-- An Attention-Based Model for Predicting Contextual Informativeness and Curriculum Learning Applications [(arXiv, 2020)](https://arxiv.org/abs/2204.09885)
-- Finding Educationally Supportive Contexts for Vocabulary Learning with Attention-Based Models [(COLING, 2024)](https://aclanthology.org/2024.lrec-main.640/)
+The repository includes resources for 
+- An Attention-Based Model for Predicting Contextual Informativeness and Curriculum Learning Applications [(arXiv, 2020; notebook and dataset)](https://arxiv.org/abs/2204.09885)
+- Finding Educationally Supportive Contexts for Vocabulary Learning with Attention-Based Models [(LREC-COLING, 2024; notebook)](https://aclanthology.org/2024.lrec-main.640/)
+
 To cite the work and dataset, please use the linked paper.
 
 # Installing dependencies
